@@ -391,6 +391,14 @@ class MainActivity : AppCompatActivity() {
         fun showToast(message: String) {
             Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
         }
+
+        @JavascriptInterface
+        fun clearCookies() {
+            Log.d("DeccoBridge", "Clearing WebView cookies via bridge")
+            val cookieManager = CookieManager.getInstance()
+            cookieManager.removeAllCookies(null)
+            cookieManager.flush()
+        }
     }
 
     /**
