@@ -49,6 +49,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="decco.tv" />
+                <data android:scheme="http" android:host="decco.tv" />
+                <data android:scheme="https" android:host="www.decco.tv" />
+                <data android:scheme="http" android:host="www.decco.tv" />
             </intent-filter>
         </activity>
 

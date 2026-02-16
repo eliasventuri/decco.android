@@ -440,7 +440,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 null
             }
-            "https" -> {
+            "https", "http" -> {
                 data.toString()
             }
             else -> null
