@@ -203,12 +203,29 @@ class MainActivity : AppCompatActivity() {
                 // Use the webView instance safely, assuming it's initialized
                 cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-                // Set the better-auth token for both production and local domains
+                // Set the better-auth token for production (HTTPS requires Secure)
                 val cookieValue = "better-auth.session_token=$token; domain=decco.tv; path=/; Secure; SameSite=None"
                 cookieManager.setCookie("https://decco.tv", cookieValue)
                 
-                val localhostValue = "better-auth.session_token=$token; domain=localhost; path=/; Secure; SameSite=None"
-                cookieManager.setCookie("http://localhost:3000", localhostValue)
+                // For local development (HTTP), we MUST NOT use Secure, otherwise the cookie is ignored.
+                // We also cover 10.0.2.2 which is the Android emulator's alias for localhost.
+                val localValue = "better-auth.session_token=$token; path=/; SameSite=Lax"
+                cookieManager.setCookie("http://localhost:3000", localValue)
+                cookieManager.setCookie("http://10.0.2.2:3000", localValue)
+                
+                // Try setting it on the current WebView URL's host as well, just to be sure
+                val currentUrl = webView.url
+                if (currentUrl != null && !currentUrl.contains("decco.tv")) {
+                     try {
+                         val currentHost = Uri.parse(currentUrl).host
+                         if (currentHost != null) {
+                             val customValue = "better-auth.session_token=$token; domain=$currentHost; path=/; SameSite=Lax"
+                             cookieManager.setCookie(currentUrl, customValue)
+                         }
+                     } catch (e: Exception) {
+                         Log.e("DeccoAuth", "Failed to set cookie on current URL", e)
+                     }
+                }
                 
                 cookieManager.flush()
                 return true
