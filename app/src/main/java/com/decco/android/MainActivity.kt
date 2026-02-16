@@ -107,27 +107,9 @@ class MainActivity : AppCompatActivity() {
                     Log.d("DeccoWebView", "Intercepted decco:// scheme: $urlString")
                     
                     // Auth Callback
-                    if (uri.host == "auth-callback") {
-                        val token = uri.getQueryParameter("token")
-                        if (token != null) {
-                            Log.d("DeccoAuth", "Received session token via deep link")
-                            val cookieManager = CookieManager.getInstance()
-                            cookieManager.setAcceptCookie(true)
-                            cookieManager.setAcceptThirdPartyCookies(webView, true)
-                            
-                            // Set the better-auth token for both production and local domains to be safe
-                            val cookieValue = "better-auth.session_token=$token; domain=decco.tv; path=/; Secure; SameSite=None"
-                            cookieManager.setCookie("https://decco.tv", cookieValue)
-                            
-                            val localhostValue = "better-auth.session_token=$token; domain=localhost; path=/; Secure; SameSite=None"
-                            cookieManager.setCookie("http://localhost:3000", localhostValue)
-                            
-                            cookieManager.flush()
-                            
-                            // Reload to apply auth state
-                            webView.reload()
-                            return true
-                        }
+                    if (handleAuthCallback(uri)) {
+                         webView.reload()
+                         return true
                     }
 
                     // Player Launch
@@ -206,6 +188,33 @@ class MainActivity : AppCompatActivity() {
                 return super.onConsoleMessage(consoleMessage)
             }
         }
+    }
+
+    /**
+     * Processes auth callback URI. Returns true if handled.
+     */
+    private fun handleAuthCallback(uri: Uri): Boolean {
+        if (uri.host == "auth-callback") {
+            val token = uri.getQueryParameter("token")
+            if (token != null) {
+                Log.d("DeccoAuth", "Received session token via deep link")
+                val cookieManager = CookieManager.getInstance()
+                cookieManager.setAcceptCookie(true)
+                // Use the webView instance safely, assuming it's initialized
+                cookieManager.setAcceptThirdPartyCookies(webView, true)
+
+                // Set the better-auth token for both production and local domains
+                val cookieValue = "better-auth.session_token=$token; domain=decco.tv; path=/; Secure; SameSite=None"
+                cookieManager.setCookie("https://decco.tv", cookieValue)
+                
+                val localhostValue = "better-auth.session_token=$token; domain=localhost; path=/; Secure; SameSite=None"
+                cookieManager.setCookie("http://localhost:3000", localhostValue)
+                
+                cookieManager.flush()
+                return true
+            }
+        }
+        return false
     }
 
     private fun launchPlayer(
@@ -371,6 +380,12 @@ class MainActivity : AppCompatActivity() {
 
         return when (data.scheme) {
             "decco" -> {
+                // Check specifically for auth-callback first
+                if (handleAuthCallback(data)) {
+                     // Return the main URL to force a reload with the new cookies
+                     return DECCO_URL
+                }
+
                 val hash = extractHashFromDeccoUri(data)
                 if (hash.isNotEmpty()) {
                     val title = data.getQueryParameter("title") ?: ""
