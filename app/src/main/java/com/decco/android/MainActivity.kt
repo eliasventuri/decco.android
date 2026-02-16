@@ -87,13 +87,14 @@ class MainActivity : AppCompatActivity() {
                 
                 // CRITICAL: Intercept social login initialization and open in system browser.
                 // This prevents state_mismatch because the state cookie will be set in the system browser.
-                if (isDecco && urlString.contains("/api/auth/login/social/")) {
+                // We check for the presence of the login social path across ANY host to support test envs.
+                if (urlString.contains("/api/auth/login/social/")) {
                     Log.d("DeccoWebView", "Redirecting auth init to system browser: $urlString")
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, uri))
                         return true
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        Log.e("DeccoWebView", "Failed to redirect auth init", e)
                     }
                 }
 
@@ -114,9 +115,13 @@ class MainActivity : AppCompatActivity() {
                             cookieManager.setAcceptCookie(true)
                             cookieManager.setAcceptThirdPartyCookies(webView, true)
                             
-                            // Set the better-auth token
+                            // Set the better-auth token for both production and local domains to be safe
                             val cookieValue = "better-auth.session_token=$token; domain=decco.tv; path=/; Secure; SameSite=None"
                             cookieManager.setCookie("https://decco.tv", cookieValue)
+                            
+                            val localhostValue = "better-auth.session_token=$token; domain=localhost; path=/; Secure; SameSite=None"
+                            cookieManager.setCookie("http://localhost:3000", localhostValue)
+                            
                             cookieManager.flush()
                             
                             // Reload to apply auth state
