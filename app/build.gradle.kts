@@ -1,5 +1,10 @@
 plugins {
     id("com.android.application")
+    // Apply Firebase plugins ONLY if google-services.json exists to avoid build errors
+    if (file("google-services.json").exists()) {
+        id("com.google.gms.google-services")
+        id("com.google.firebase.crashlytics")
+    }
 }
 
 android {
@@ -71,4 +76,10 @@ dependencies {
     // Using Jellyfin pre-compiled version which includes native binaries for FFmpeg (Audio)
     val jellyfinMedia3Version = "1.6.1+2"
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$jellyfinMedia3Version")
+
+    // Firebase (Crashlytics & Analytics)
+    // NOTE: Requires google-services.json in /app folder
+    implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-crashlytics")
 }

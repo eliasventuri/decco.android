@@ -123,7 +123,20 @@ class EngineService : Service() {
         val cm = connectivityManager ?: return
         val isMetered = cm.isActiveNetworkMetered
         Log.i(TAG, "Network state changed. Metered: $isMetered")
+        
+        // If we are on mobile data, we might want to be more aggressive about stopping
+        if (isMetered) {
+             updateNotification("Running on Mobile Data")
+        } else {
+             updateNotification("Engine running")
+        }
+        
         torrentManager?.setMeteredMode(isMetered)
+    }
+
+    fun stopService() {
+        stopForeground(true)
+        stopSelf()
     }
 
     private fun createNotificationChannel() {
