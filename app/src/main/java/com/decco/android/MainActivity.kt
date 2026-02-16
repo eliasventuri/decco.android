@@ -85,11 +85,11 @@ class MainActivity : AppCompatActivity() {
                 val isDecco = uri.host?.contains("decco.tv") == true
                 val isLocal = urlString.contains("127.0.0.1") || urlString.contains("localhost")
                 
-                // CRITICAL: Intercept social login initialization and open in system browser.
-                // This prevents state_mismatch because the state cookie will be set in the system browser.
-                // We check for the presence of the login social path across ANY host to support test envs.
-                if (urlString.contains("/api/auth/login/social")) {
-                    Log.d("DeccoWebView", "Redirecting auth init to system browser: $urlString")
+                // CRITICAL: Intercept social login initiation and open in system browser.
+                // This prevents state_mismatch and 404s because the GET proxy will be handled 
+                // entirely within the system browser context.
+                if (urlString.contains("/api/auth/social-redirect")) {
+                    Log.d("DeccoWebView", "Redirecting social-redirect to system browser: $urlString")
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, uri))
                         return true
