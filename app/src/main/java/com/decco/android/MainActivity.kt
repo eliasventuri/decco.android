@@ -204,8 +204,12 @@ class MainActivity : AppCompatActivity() {
                 cookieManager.setAcceptThirdPartyCookies(webView, true)
 
                 // Set the better-auth token for production (HTTPS requires Secure)
+                // We set BOTH standard and __Secure- prefixed cookies to ensure the server finds what it expects.
                 val cookieValue = "better-auth.session_token=$token; domain=decco.tv; path=/; Secure; SameSite=None"
                 cookieManager.setCookie("https://decco.tv", cookieValue)
+                
+                val secureCookieValue = "__Secure-better-auth.session_token=$token; domain=decco.tv; path=/; Secure; SameSite=None"
+                cookieManager.setCookie("https://decco.tv", secureCookieValue)
                 
                 // For local development (HTTP), we MUST NOT use Secure, otherwise the cookie is ignored.
                 // We also cover 10.0.2.2 which is the Android emulator's alias for localhost.
