@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Decco brand colors -->
+    <color name="decco_bg">#FF0D0D0D</color>
+    <color name="decco_surface">#FF1A1A1A</color>
+    <color name="decco_teal">#FF2DD4BF</color>
+    <color name="decco_teal_dark">#FF0D9488</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>

@@ -1,0 +1,27 @@
+# Android Studio / Gradle
+*.iml
+.gradle/
+local.properties
+.idea/
+*.hprof
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing
+*.jks
+*.keystore
+
+# APK/AAB
+*.apk
+*.aab
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+stacktrace*
+caused_by.txt

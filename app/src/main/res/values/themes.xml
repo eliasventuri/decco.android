@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark theme matching Decco web (#0d0d0d background) -->
+    <style name="Theme.Decco" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/decco_bg</item>
+        <item name="android:statusBarColor">@color/decco_bg</item>
+        <item name="android:navigationBarColor">@color/decco_bg</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="colorPrimary">@color/decco_teal</item>
+        <item name="colorPrimaryDark">@color/decco_teal_dark</item>
+        <item name="colorAccent">@color/decco_teal</item>
+    </style>
+</resources>
