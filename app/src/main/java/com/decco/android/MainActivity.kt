@@ -398,10 +398,6 @@ class MainActivity : AppCompatActivity() {
             val cookieManager = CookieManager.getInstance()
             cookieManager.removeAllCookies(null)
             cookieManager.flush()
-            
-             runOnUiThread {
-                Toast.makeText(this@MainActivity, "App Cookies Cleared", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
