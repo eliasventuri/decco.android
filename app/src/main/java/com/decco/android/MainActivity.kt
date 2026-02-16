@@ -88,9 +88,31 @@ class MainActivity : AppCompatActivity() {
                     return false // Let WebView handle it
                 }
 
-                // Handle decco:// scheme (Player)
+                // Handle decco:// scheme (Player & Auth)
                 if (uri.scheme == "decco") {
                     Log.d("DeccoWebView", "Intercepted decco:// scheme: $urlString")
+                    
+                    // Auth Callback
+                    if (uri.host == "auth-callback") {
+                        val token = uri.getQueryParameter("token")
+                        if (token != null) {
+                            Log.d("DeccoAuth", "Received session token via deep link")
+                            val cookieManager = CookieManager.getInstance()
+                            cookieManager.setAcceptCookie(true)
+                            cookieManager.setAcceptThirdPartyCookies(webView, true)
+                            
+                            // Set the better-auth token
+                            val cookieValue = "better-auth.session_token=$token; domain=decco.tv; path=/; Secure; SameSite=None"
+                            cookieManager.setCookie("https://decco.tv", cookieValue)
+                            cookieManager.flush()
+                            
+                            // Reload to apply auth state
+                            webView.reload()
+                            return true
+                        }
+                    }
+
+                    // Player Launch
                     try {
                         val hash = extractHashFromDeccoUri(uri)
                         val title = uri.getQueryParameter("title") ?: ""
