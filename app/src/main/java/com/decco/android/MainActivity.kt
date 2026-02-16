@@ -82,9 +82,22 @@ class MainActivity : AppCompatActivity() {
                 Log.d("DeccoWebView", "shouldOverrideUrlLoading: $urlString")
 
                 // Allow decco.tv (including subdomains), localhost, and decco:// scheme
-                if (uri.host?.contains("decco.tv") == true || 
-                    urlString.contains("127.0.0.1") || 
-                    urlString.contains("localhost")) {
+                val isDecco = uri.host?.contains("decco.tv") == true
+                val isLocal = urlString.contains("127.0.0.1") || urlString.contains("localhost")
+                
+                // CRITICAL: Intercept social login initialization and open in system browser.
+                // This prevents state_mismatch because the state cookie will be set in the system browser.
+                if (isDecco && urlString.contains("/api/auth/login/social/")) {
+                    Log.d("DeccoWebView", "Redirecting auth init to system browser: $urlString")
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, uri))
+                        return true
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                if (isDecco || isLocal) {
                     return false // Let WebView handle it
                 }
 
