@@ -88,7 +88,7 @@ class MainActivity : AppCompatActivity() {
                 // CRITICAL: Intercept social login initialization and open in system browser.
                 // This prevents state_mismatch because the state cookie will be set in the system browser.
                 // We check for the presence of the login social path across ANY host to support test envs.
-                if (urlString.contains("/api/auth/login/social/")) {
+                if (urlString.contains("/api/auth/login/social")) {
                     Log.d("DeccoWebView", "Redirecting auth init to system browser: $urlString")
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, uri))
