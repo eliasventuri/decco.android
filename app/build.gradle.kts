@@ -1,10 +1,7 @@
 plugins {
     id("com.android.application")
-    // Apply Firebase plugins ONLY if google-services.json exists to avoid build errors
-    if (file("google-services.json").exists()) {
-        id("com.google.gms.google-services")
-        id("com.google.firebase.crashlytics")
-    }
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 android {
