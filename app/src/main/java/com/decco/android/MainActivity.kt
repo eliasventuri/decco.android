@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.decco.android.engine.EngineService
 import java.net.HttpURLConnection
 import java.net.URL
+import com.google.firebase.FirebaseApp
 
 /**
  * Main Activity — Hosts a fullscreen WebView loading decco.tv
@@ -66,11 +67,19 @@ class MainActivity : AppCompatActivity() {
             Log.d("DeccoWebView", "UserAgent set to: $userAgentString")
         }
 
-        // Javascript bridge — allows the web app to detect we're on Android
-        webView.addJavascriptInterface(DeccoJsBridge(), "DeccoAndroid")
-        
-        // Version Check
-        checkAppVersion()
+        try {
+            // Javascript bridge — allows the web app to detect we're on Android
+            webView.addJavascriptInterface(DeccoJsBridge(), "DeccoAndroid")
+            
+            // Initialize Firebase manually to catch configuration errors
+            FirebaseApp.initializeApp(this)
+            
+            // Version Check
+            checkAppVersion()
+        } catch (e: Exception) {
+            Log.e("DeccoInit", "Error initializing app features", e)
+            Toast.makeText(this, "Init Error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
 
         webView.webViewClient = object : WebViewClient() {
 

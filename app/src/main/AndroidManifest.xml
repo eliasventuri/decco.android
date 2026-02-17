@@ -79,5 +79,12 @@
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
+        <!-- Disable Firebase Auto-Init to prevent startup crashes -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            android:exported="false"
+            tools:node="remove" />
+
     </application>
 </manifest>
