@@ -40,3 +40,11 @@
 # Prevent warnings (Release builds can be strict)
 -dontwarn javax.annotation.**
 -dontwarn sun.misc.**
+
+# Fix Retrofit/Gson ClassCastException with Suspend Functions
+-keep interface com.decco.android.updater.GitHubApi { *; }
+-keep class kotlin.Metadata { *; }
+-keepattributes Signature, InnerClasses, EnclosingMethod
+-keep class com.decco.android.updater.Release { *; }
+-keep class com.decco.android.updater.Asset { *; }
+-keepclassmembers class com.decco.android.updater.** { *; }
