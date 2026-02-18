@@ -480,7 +480,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun goFullscreen() {
         val decorView = window.decorView
-        decorView?.post {
+        decorView.post {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             WindowInsetsControllerCompat(window, decorView).let { controller ->
                 controller.hide(WindowInsetsCompat.Type.systemBars())
