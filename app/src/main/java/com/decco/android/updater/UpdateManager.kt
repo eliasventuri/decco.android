@@ -152,22 +152,53 @@ object UpdateManager {
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val downloadId = downloadManager.enqueue(request)
 
-        // Register receiver for download completion
-        val onComplete = object : BroadcastReceiver() {
-            override fun onReceive(ctxt: Context, intent: Intent) {
-                val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (downloadId == id) {
-                    Log.d("DeccoUpdate", "Download complete. Installing...")
-                    Toast.makeText(context, "Download complete", Toast.LENGTH_SHORT).show()
-                    context.unregisterReceiver(this)
-                    installUpdate(ctxt, fileName)
+        Log.d("DeccoUpdate", "Download enqueued with ID: $downloadId")
+
+        // Start polling for status
+        CoroutineScope(Dispatchers.IO).launch {
+            var downloading = true
+            while (downloading) {
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                val cursor = downloadManager.query(query)
+                if (cursor.moveToFirst()) {
+                    val status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
+                    val reason = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_REASON))
+                    
+                    when (status) {
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            Log.d("DeccoUpdate", "Download STATUS_SUCCESSFUL")
+                            downloading = false
+                            withContext(Dispatchers.Main) {
+                                installUpdate(context, fileName)
+                            }
+                        }
+                        DownloadManager.STATUS_FAILED -> {
+                            Log.e("DeccoUpdate", "Download STATUS_FAILED: Reason=$reason")
+                            downloading = false
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Download failed: Error $reason", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        DownloadManager.STATUS_RUNNING -> {
+                            val total = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                            if (total > 0) {
+                                val downloaded = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                                val progress = (downloaded * 100 / total).toInt()
+                                Log.d("DeccoUpdate", "Download progress: $progress%")
+                            }
+                        }
+                        DownloadManager.STATUS_PENDING -> Log.d("DeccoUpdate", "Download PENDING")
+                        DownloadManager.STATUS_PAUSED -> Log.d("DeccoUpdate", "Download PAUSED: Reason=$reason")
+                    }
+                } else {
+                    Log.e("DeccoUpdate", "Download cursor empty (cancelled?)")
+                    downloading = false
+                }
+                cursor.close()
+                if (downloading) {
+                    kotlinx.coroutines.delay(1000)
                 }
             }
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
         }
     }
 
