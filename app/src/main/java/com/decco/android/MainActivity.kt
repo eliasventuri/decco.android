@@ -74,11 +74,10 @@ class MainActivity : AppCompatActivity() {
             // Initialize Firebase manually to catch configuration errors
             FirebaseApp.initializeApp(this)
             
-            // Version Check
-            checkAppVersion()
+            // GitHub Release Update Check
+            com.decco.android.updater.UpdateManager.checkForUpdates(this)
         } catch (e: Exception) {
             Log.e("DeccoInit", "Error initializing app features", e)
-            Toast.makeText(this, "Init Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
 
         webView.webViewClient = object : WebViewClient() {
@@ -580,56 +579,6 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun checkAppVersion() {
-        Thread {
-            try {
-                // Determine API URL based on current WebView URL or fallback to default
-                // Note: We use the production URL for version checks usually, but here we use the domain
-                val apiUrl = "$DECCO_URL/api/android-version"
-                
-                val url = URL(apiUrl)
-                val connection = (url.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 5000
-                    readTimeout = 5000
-                    requestMethod = "GET"
-                }
-
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    val json = org.json.JSONObject(response)
-                    val minVersion = json.optInt("minVersion", 0)
-                    val updateUrl = json.optString("url")
-
-                    val currentVersion = BuildConfig.VERSION_CODE
-                    
-                    if (currentVersion < minVersion) {
-                        runOnUiThread {
-                            showForceUpdateDialog(updateUrl)
-                        }
-                    }
-                }
-                connection.disconnect()
-            } catch (e: Exception) {
-                Log.e("DeccoVersion", "Failed to check version", e)
-            }
-        }.start()
-    }
-
-    private fun showForceUpdateDialog(updateUrl: String) {
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Update Required")
-            .setMessage("A new version of Decco is available. Please update to continue.")
-            .setCancelable(false)
-            .setPositiveButton("Update") { _, _ ->
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl)))
-                } catch (e: Exception) {
-                    Toast.makeText(this, "Could not open store", Toast.LENGTH_SHORT).show()
-                }
-                finish()
-            }
-            .show()
-    }
 
     companion object {
         const val DECCO_URL = "https://decco.tv"
