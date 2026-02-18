@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.widget.Toast
+import android.util.Log
 import androidx.core.content.FileProvider
 import com.decco.android.BuildConfig
 import kotlinx.coroutines.CoroutineScope
@@ -33,44 +34,73 @@ object UpdateManager {
     private const val BASE_URL = "https://api.github.com/"
 
     fun checkForUpdates(context: Context, manual: Boolean = false) {
+        Log.d("DeccoUpdate", "checkForUpdates called. manual=$manual")
         if (manual) {
             Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
         }
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                Log.d("DeccoUpdate", "Building Retrofit client...")
+                val client = okhttp3.OkHttpClient.Builder()
+                    .addInterceptor { chain ->
+                        val request = chain.request().newBuilder()
+                            .header("User-Agent", "DeccoAndroid/1.0")
+                            .header("Accept", "application/vnd.github.v3+json")
+                            .build()
+                        chain.proceed(request)
+                    }
+                    .build()
+
                 val retrofit = Retrofit.Builder()
                     .baseUrl(BASE_URL)
+                    .client(client)
                     .addConverterFactory(GsonConverterFactory.create())
                     .build()
 
                 val api = retrofit.create(GitHubApi::class.java)
+                Log.d("DeccoUpdate", "Fetching latest release...")
                 val release = api.getLatestRelease()
+                Log.d("DeccoUpdate", "Release fetched: ${release.tag_name}")
 
                 val currentVersion = BuildConfig.VERSION_NAME
                 val latestVersion = release.tag_name.removePrefix("v")
+                Log.d("DeccoUpdate", "Current: $currentVersion, Latest: $latestVersion")
 
                 if (isNewerVersion(currentVersion, latestVersion)) {
+                    Log.d("DeccoUpdate", "New version detected.")
                     val apkAsset = release.assets.find { it.name.endsWith(".apk") }
                     if (apkAsset != null) {
+                        Log.d("DeccoUpdate", "APK asset found: ${apkAsset.browser_download_url}")
                         withContext(Dispatchers.Main) {
                             showUpdateDialog(context, latestVersion, apkAsset.browser_download_url)
                         }
-                    } else if (manual) {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Update found ($latestVersion) but no APK asset.", Toast.LENGTH_LONG).show()
+                    } else {
+                        Log.w("DeccoUpdate", "No APK asset found in release.")
+                        if (manual) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Update found ($latestVersion) but no APK asset.", Toast.LENGTH_LONG).show()
+                            }
                         }
                     }
-                } else if (manual) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "No update available. running $currentVersion", Toast.LENGTH_SHORT).show()
+                } else {
+                    Log.d("DeccoUpdate", "App is up to date.")
+                    if (manual) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "No update available. running $currentVersion", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("DeccoUpdate", "Update check failed", e)
                 if (manual) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Update check failed: ${e.message}", Toast.LENGTH_LONG).show()
+                        val msg = if (e is retrofit2.HttpException) {
+                            "HTTP ${e.code()}: ${e.message()}"
+                        } else {
+                            e.message ?: "Unknown error"
+                        }
+                        Toast.makeText(context, "Error: $msg", Toast.LENGTH_LONG).show()
                     }
                 }
             }
