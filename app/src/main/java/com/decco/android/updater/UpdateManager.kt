@@ -32,7 +32,11 @@ data class Asset(val browser_download_url: String, val name: String)
 object UpdateManager {
     private const val BASE_URL = "https://api.github.com/"
 
-    fun checkForUpdates(context: Context) {
+    fun checkForUpdates(context: Context, manual: Boolean = false) {
+        if (manual) {
+            Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
+        }
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val retrofit = Retrofit.Builder()
@@ -52,10 +56,23 @@ object UpdateManager {
                         withContext(Dispatchers.Main) {
                             showUpdateDialog(context, latestVersion, apkAsset.browser_download_url)
                         }
+                    } else if (manual) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Update found ($latestVersion) but no APK asset.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } else if (manual) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "No update available. running $currentVersion", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                if (manual) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Update check failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }

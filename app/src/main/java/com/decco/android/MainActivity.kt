@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity() {
             
             
             // GitHub Release Update Check
-            com.decco.android.updater.UpdateManager.checkForUpdates(this)
+            com.decco.android.updater.UpdateManager.checkForUpdates(this, false)
         } catch (e: Exception) {
             Log.e("DeccoInit", "Error initializing app features", e)
         }
@@ -406,6 +406,11 @@ class MainActivity : AppCompatActivity() {
             val cookieManager = CookieManager.getInstance()
             cookieManager.removeAllCookies(null)
             cookieManager.flush()
+        }
+
+        @JavascriptInterface
+        fun checkForUpdates() {
+            com.decco.android.updater.UpdateManager.checkForUpdates(this@MainActivity, true)
         }
     }
 

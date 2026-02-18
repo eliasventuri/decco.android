@@ -23,6 +23,8 @@
 
 # Keep App Classes (Safety measure for launch crash)
 -keep class com.decco.android.** { *; }
+-keep class com.decco.android.updater.Release { *; }
+-keep class com.decco.android.updater.Asset { *; }
 
 # Keep Javascript Bridge
 -keepclassmembers class * {
