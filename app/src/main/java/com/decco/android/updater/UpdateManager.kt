@@ -148,6 +148,8 @@ object UpdateManager {
             .setDestinationInExternalFilesDir(context, null, fileName)
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(true)
+            .addRequestHeader("User-Agent", "DeccoAndroid/1.0")
+            .addRequestHeader("Accept", "application/vnd.github.v3+json")
 
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val downloadId = downloadManager.enqueue(request)
