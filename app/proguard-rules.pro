@@ -42,9 +42,18 @@
 -dontwarn sun.misc.**
 
 # Fix Retrofit/Gson ClassCastException with Suspend Functions
+-keep class kotlin.coroutines.** { *; }
+-keep class retrofit2.** { *; }
+-keep class okhttp3.** { *; }
+-keep class okio.** { *; }
+-keep class com.google.gson.** { *; }
+
+# Keep data classes and interface for Retrofit
 -keep interface com.decco.android.updater.GitHubApi { *; }
--keep class kotlin.Metadata { *; }
--keepattributes Signature, InnerClasses, EnclosingMethod
 -keep class com.decco.android.updater.Release { *; }
 -keep class com.decco.android.updater.Asset { *; }
--keepclassmembers class com.decco.android.updater.** { *; }
+-keep class com.decco.android.updater.UpdateManager { *; }
+
+# Ensure metadata and signatures are kept
+-keep class kotlin.Metadata { *; }
+-keepattributes Signature, InnerClasses, EnclosingMethod, RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations, AnnotationDefault
