@@ -239,7 +239,26 @@ class MainActivity : AppCompatActivity() {
                      }
                 }
                 
+                
+                // Verify cookies were set
+                val storedCookie = cookieManager.getCookie("https://decco.tv")
+                Log.d("DeccoAuth", "Verifying cookie set. Current value: $storedCookie")
+
+                if (storedCookie != null && storedCookie.contains(token)) {
+                    Log.d("DeccoAuth", "Cookie verification SUCCESS")
+                } else {
+                    Log.w("DeccoAuth", "Cookie verification FAILED or token missing")
+                }
+                
                 cookieManager.flush()
+                
+                // Give the system a moment to sync before triggering the reload
+                try {
+                    Thread.sleep(200)
+                } catch (e: InterruptedException) {
+                    e.printStackTrace()
+                }
+                
                 return true
             }
         }
