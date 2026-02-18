@@ -136,6 +136,11 @@ object UpdateManager {
         Toast.makeText(context, "Downloading update...", Toast.LENGTH_SHORT).show()
 
         val fileName = "update.apk"
+        val file = File(context.getExternalFilesDir(null), fileName)
+        if (file.exists()) {
+            file.delete()
+        }
+
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle("Decco Update")
             .setDescription("Downloading version update...")
@@ -152,22 +157,30 @@ object UpdateManager {
             override fun onReceive(ctxt: Context, intent: Intent) {
                 val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (downloadId == id) {
+                    Log.d("DeccoUpdate", "Download complete. Installing...")
+                    Toast.makeText(context, "Download complete", Toast.LENGTH_SHORT).show()
                     context.unregisterReceiver(this)
                     installUpdate(ctxt, fileName)
                 }
             }
         }
-        context.registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_NOT_EXPORTED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        }
     }
 
     private fun installUpdate(context: Context, fileName: String) {
         try {
             val file = File(context.getExternalFilesDir(null), fileName)
             if (!file.exists()) {
+                Log.e("DeccoUpdate", "Update file not found: ${file.absolutePath}")
                 Toast.makeText(context, "Update file not found", Toast.LENGTH_SHORT).show()
                 return
             }
 
+            Log.d("DeccoUpdate", "Installing update from: ${file.absolutePath}")
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
@@ -181,6 +194,7 @@ object UpdateManager {
             }
             context.startActivity(intent)
         } catch (e: Exception) {
+            Log.e("DeccoUpdate", "Install failed", e)
             e.printStackTrace()
             Toast.makeText(context, "Install failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
