@@ -7,12 +7,22 @@
 # Keep LibTorrent (JNI)
 -keep class com.frostwire.jlibtorrent.** { *; }
 -keep class org.libtorrent4j.** { *; }
+-dontwarn com.frostwire.jlibtorrent.**
+-dontwarn org.libtorrent4j.**
 
 # Keep NanoHTTPD
 -keep class fi.iki.elonen.** { *; }
+-dontwarn fi.iki.elonen.**
 
 # Keep ExoPlayer
 -keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**
+
+# Keep JSON (used in version check)
+-keep class org.json.** { *; }
+
+# Keep App Classes (Safety measure for launch crash)
+-keep class com.decco.android.** { *; }
 
 # Keep Javascript Bridge
 -keepclassmembers class * {
@@ -22,3 +32,9 @@
 # Keep Generics
 -keepattributes Signature
 -keepattributes *Annotation*
+-keepattributes EnclosingMethod
+-keepattributes InnerClasses
+
+# Prevent warnings (Release builds can be strict)
+-dontwarn javax.annotation.**
+-dontwarn sun.misc.**
