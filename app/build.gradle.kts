@@ -3,8 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
+    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -84,11 +83,6 @@ dependencies {
     val jellyfinMedia3Version = "1.6.1+2"
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$jellyfinMedia3Version")
 
-    // Firebase (Crashlytics & Analytics)
-    // NOTE: Requires google-services.json in /app folder
-    implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
-    implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.firebase:firebase-crashlytics")
 
     // Update Checker (GitHub API)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")

@@ -20,16 +20,23 @@ try {
         }
     }
 
-    // 1. Check Git Status
+    // 1. Check Git Status & Auto-Commit
     console.log('[Release] Checking git status...');
     try {
         const status = execSync('git status --porcelain').toString();
         if (status.trim()) {
-            console.error('Error: Git working directory is not clean. Commit or stash changes first.');
-            process.exit(1);
+            console.log('[Release] Working directory not clean. Auto-committing changes...');
+            execSync('git add .', { stdio: 'inherit' });
+            try {
+                execSync('git commit -m "chore: Prepare for release"', { stdio: 'inherit' });
+                execSync('git push origin main', { stdio: 'inherit' });
+            } catch (e) {
+                // If commit fails (e.g. nothing to commit despite status showing something? unlikely but possible), ignored.
+                console.warn('[Release] Warning: Commit/Push failed or nothing to commit.', e.message);
+            }
         }
     } catch (e) {
-        console.error('Error checking git status:', e.message);
+        console.error('Error checking/committing git status:', e.message);
     }
 
     // 2. Read and Bump Version in build.gradle.kts
