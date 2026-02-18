@@ -141,64 +141,75 @@ object UpdateManager {
             file.delete()
         }
 
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("Decco Update")
-            .setDescription("Downloading version update...")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            .setDestinationInExternalFilesDir(context, null, fileName)
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(true)
-            .addRequestHeader("User-Agent", "DeccoAndroid/1.0")
-            .addRequestHeader("Accept", "application/vnd.github.v3+json")
-
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val downloadId = downloadManager.enqueue(request)
-
-        Log.d("DeccoUpdate", "Download enqueued with ID: $downloadId")
-
-        // Start polling for status
         CoroutineScope(Dispatchers.IO).launch {
-            var downloading = true
-            while (downloading) {
-                val query = DownloadManager.Query().setFilterById(downloadId)
-                val cursor = downloadManager.query(query)
-                if (cursor.moveToFirst()) {
-                    val status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
-                    val reason = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_REASON))
-                    
-                    when (status) {
-                        DownloadManager.STATUS_SUCCESSFUL -> {
-                            Log.d("DeccoUpdate", "Download STATUS_SUCCESSFUL")
-                            downloading = false
-                            withContext(Dispatchers.Main) {
-                                installUpdate(context, fileName)
-                            }
-                        }
-                        DownloadManager.STATUS_FAILED -> {
-                            Log.e("DeccoUpdate", "Download STATUS_FAILED: Reason=$reason")
-                            downloading = false
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(context, "Download failed: Error $reason", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        DownloadManager.STATUS_RUNNING -> {
-                            val total = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                            if (total > 0) {
-                                val downloaded = cursor.getLong(cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                                val progress = (downloaded * 100 / total).toInt()
-                                Log.d("DeccoUpdate", "Download progress: $progress%")
-                            }
-                        }
-                        DownloadManager.STATUS_PENDING -> Log.d("DeccoUpdate", "Download PENDING")
-                        DownloadManager.STATUS_PAUSED -> Log.d("DeccoUpdate", "Download PAUSED: Reason=$reason")
+            try {
+                Log.d("DeccoUpdate", "Starting direct download from: $url")
+                
+                val client = okhttp3.OkHttpClient.Builder()
+                    .followRedirects(true)
+                    .followSslRedirects(true)
+                    .addInterceptor { chain ->
+                        val request = chain.request().newBuilder()
+                            .header("User-Agent", "DeccoAndroid/1.0")
+                            .header("Accept", "application/vnd.android.package-archive") // Correct intent
+                            .build()
+                        chain.proceed(request)
                     }
-                } else {
-                    Log.e("DeccoUpdate", "Download cursor empty (cancelled?)")
-                    downloading = false
+                    .build()
+
+                val request = okhttp3.Request.Builder().url(url).build()
+                val response = client.newCall(request).execute()
+
+                if (!response.isSuccessful) {
+                    Log.e("DeccoUpdate", "Download failed: HTTP ${response.code}")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Download failed: HTTP ${response.code}", Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
                 }
-                cursor.close()
-                if (downloading) {
-                    kotlinx.coroutines.delay(1000)
+
+                val body = response.body
+                if (body == null) {
+                    Log.e("DeccoUpdate", "Download failed: Empty body")
+                    return@launch
+                }
+
+                val contentLength = body.contentLength()
+                val inputStream = body.byteStream()
+                val outputStream = java.io.FileOutputStream(file)
+                val buffer = ByteArray(8 * 1024)
+                var bytesRead: Int
+                var totalBytesRead: Long = 0
+                var lastProgressUpdate: Long = 0
+
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    outputStream.write(buffer, 0, bytesRead)
+                    totalBytesRead += bytesRead
+
+                    if (contentLength > 0) {
+                        val currentTime = System.currentTimeMillis()
+                        if (currentTime - lastProgressUpdate > 500) { // Log every 500ms
+                            val progress = (totalBytesRead * 100 / contentLength).toInt()
+                            Log.d("DeccoUpdate", "Download progress: $progress%")
+                            lastProgressUpdate = currentTime
+                        }
+                    }
+                }
+
+                outputStream.flush()
+                outputStream.close()
+                inputStream.close()
+
+                Log.d("DeccoUpdate", "Download complete. File size: ${file.length()}")
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Download complete", Toast.LENGTH_SHORT).show()
+                    installUpdate(context, fileName)
+                }
+
+            } catch (e: Exception) {
+                Log.e("DeccoUpdate", "Direct download failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Download error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
