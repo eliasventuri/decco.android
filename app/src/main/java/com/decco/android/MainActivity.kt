@@ -431,6 +431,19 @@ class MainActivity : AppCompatActivity() {
         fun checkForUpdates() {
             com.decco.android.updater.UpdateManager.checkForUpdates(this@MainActivity, true)
         }
+
+        @JavascriptInterface
+        fun setAllowMobileData(allow: Boolean) {
+            Log.d("DeccoBridge", "setAllowMobileData: $allow")
+            val prefs = getSharedPreferences("DeccoPrefs", android.content.Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("allowMobileData", allow).apply()
+            
+            // Apply immediately to EngineService
+            val intent = Intent(this@MainActivity, EngineService::class.java).apply {
+                action = "UPDATE_NETWORK_PREFS"
+            }
+            startService(intent)
+        }
     }
 
     /**

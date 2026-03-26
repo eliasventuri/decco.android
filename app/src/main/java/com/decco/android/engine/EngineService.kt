@@ -92,6 +92,10 @@ class EngineService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "UPDATE_NETWORK_PREFS") {
+            Log.i(TAG, "Updating network preferences")
+            checkNetworkMetered()
+        }
         return START_STICKY
     }
 
@@ -121,12 +125,18 @@ class EngineService : Service() {
 
     private fun checkNetworkMetered() {
         val cm = connectivityManager ?: return
-        val isMetered = cm.isActiveNetworkMetered
-        Log.i(TAG, "Network state changed. Metered: $isMetered")
+        var isMetered = cm.isActiveNetworkMetered
+        val allowMobileData = getSharedPreferences("DeccoPrefs", android.content.Context.MODE_PRIVATE).getBoolean("allowMobileData", false)
         
-        // If we are on mobile data, we might want to be more aggressive about stopping
-        if (isMetered) {
-             updateNotification("Running on Mobile Data")
+        if (allowMobileData) {
+            isMetered = false
+        }
+        
+        Log.i(TAG, "Network state changed. Metered: $isMetered (allowMobileData: $allowMobileData)")
+        
+        // Update notification based on actual pause state
+        if (cm.isActiveNetworkMetered && !allowMobileData) {
+             updateNotification("Running on Mobile Data (Paused)")
         } else {
              updateNotification("Engine running")
         }
