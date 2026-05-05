@@ -4,13 +4,18 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
+import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.webkit.*
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.Toast
 import android.media.MediaCodecList
 import android.media.MediaFormat
@@ -26,19 +31,20 @@ import java.net.URL
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
+    private var splashOverlay: LinearLayout? = null
+    private var splashAnimator: ObjectAnimator? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Create WebView programmatically (no XML needed)
-        webView = WebView(this).apply {
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-        setContentView(webView)
+        // Use the XML layout that has both WebView and splash overlay
+        setContentView(R.layout.activity_main)
+        webView = findViewById(R.id.webview)
+        splashOverlay = findViewById(R.id.splash_overlay)
+
+        // Start a subtle pulse animation on the logo
+        startLogoPulse()
 
         // Go fullscreen (immersive) - Call AFTER setContentView to ensure DecorView is ready
         goFullscreen()
@@ -185,6 +191,8 @@ class MainActivity : AppCompatActivity() {
             override fun onPageCommitVisible(view: WebView?, url: String?) {
                 super.onPageCommitVisible(view, url)
                 Log.d("DeccoWebView", "onPageCommitVisible: $url")
+                // Hide splash as soon as the first frame of the page is visible
+                hideSplash()
             }
         }
 
@@ -519,6 +527,41 @@ class MainActivity : AppCompatActivity() {
                 controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         }
+    }
+
+    /**
+     * Pulse the logo while loading to give visual feedback.
+     */
+    private fun startLogoPulse() {
+        val logo = findViewById<ImageView>(R.id.splash_logo) ?: return
+        splashAnimator = ObjectAnimator.ofFloat(logo, View.ALPHA, 1f, 0.4f).apply {
+            duration = 900
+            repeatMode = ObjectAnimator.REVERSE
+            repeatCount = ObjectAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
+            start()
+        }
+    }
+
+    /**
+     * Fade out and remove the splash overlay.
+     */
+    private fun hideSplash() {
+        val overlay = splashOverlay ?: return
+        if (overlay.visibility != View.VISIBLE) return
+
+        // Cancel the pulse
+        splashAnimator?.cancel()
+        splashAnimator = null
+
+        overlay.animate()
+            .alpha(0f)
+            .setDuration(350)
+            .withEndAction {
+                overlay.visibility = View.GONE
+                splashOverlay = null
+            }
+            .start()
     }
 
     private fun startEngineService() {
