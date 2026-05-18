@@ -64,7 +64,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Please check your local engine and network."
+            android:text="Try another quality/source. If this is a connection issue, check your engine and network."
             android:textColor="#99FFFFFF"
             android:textSize="14sp"
             android:gravity="center" />

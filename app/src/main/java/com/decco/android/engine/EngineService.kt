@@ -92,11 +92,27 @@ class EngineService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "UPDATE_NETWORK_PREFS") {
-            Log.i(TAG, "Updating network preferences")
-            checkNetworkMetered()
+        var restartMode = START_STICKY
+
+        when (intent?.action) {
+            ACTION_UPDATE_NETWORK_PREFS -> {
+                Log.i(TAG, "Updating network preferences")
+                checkNetworkMetered()
+            }
+            ACTION_APP_BACKGROUND -> {
+                Log.i(TAG, "App moved to background. Pausing torrents and stopping engine service.")
+                torrentManager?.pauseAllTorrents()
+                updateNotification("Engine paused")
+                stopSelf()
+                restartMode = START_NOT_STICKY
+            }
+            ACTION_CLEAR_CACHE -> {
+                Log.i(TAG, "Clearing torrent cache from service action")
+                val cleared = torrentManager?.clearCache() == true
+                updateNotification(if (cleared) "Torrent cache cleared" else "Cache clear failed")
+            }
         }
-        return START_STICKY
+        return restartMode
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -111,6 +127,13 @@ class EngineService : Service() {
         torrentManager?.stop()
         isRunning = false
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "App task removed. Pausing torrents and stopping engine service.")
+        torrentManager?.pauseAllTorrents()
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     private fun scheduleCacheCleanup() {
@@ -191,6 +214,9 @@ class EngineService : Service() {
         private const val CHANNEL_ID = "decco_engine"
         private const val NOTIFICATION_ID = 1
         const val PORT = 8888
+        const val ACTION_UPDATE_NETWORK_PREFS = "UPDATE_NETWORK_PREFS"
+        const val ACTION_APP_BACKGROUND = "APP_BACKGROUND"
+        const val ACTION_CLEAR_CACHE = "CLEAR_TORRENT_CACHE"
         private const val CLEANUP_INTERVAL_MS = 60 * 60 * 1000L
 
         @Volatile

@@ -87,6 +87,13 @@ class EngineServer(
                 cors(jsonResponse(Response.Status.OK, """{"status":"ok","metered":$isMetered}"""))
             }
 
+            // ---- Cache clear ----
+            uri == "/cache/clear" || uri == "/cache" -> {
+                val cleared = torrentManager.clearCache()
+                val status = if (cleared) Response.Status.OK else Response.Status.INTERNAL_ERROR
+                cors(jsonResponse(status, """{"status":"${if (cleared) "ok" else "error"}","cleared":$cleared}"""))
+            }
+
             // ---- Video proxy (Range) ----
             uri.matches(Regex("/proxy/([a-fA-F0-9]+)")) -> {
                 val hash = uri.substringAfter("/proxy/").substringBefore("/")
@@ -172,7 +179,7 @@ class EngineServer(
 
     private fun cors(response: Response): Response {
         response.addHeader("Access-Control-Allow-Origin", "*")
-        response.addHeader("Access-Control-Allow-Methods", "GET, OPTIONS")
+        response.addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         response.addHeader("Access-Control-Allow-Headers", "Range, Content-Type")
         return response
     }

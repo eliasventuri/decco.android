@@ -574,6 +574,52 @@ class TorrentManager(private val downloadDir: File) {
     }
 
     /**
+     * Pause every active torrent without deleting cached files.
+     */
+    fun pauseAllTorrents() {
+        activeHandles.values.forEach { state ->
+            try {
+                state.handle.pause()
+                state.status = "paused"
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to pause torrent ${state.hash}", e)
+            }
+        }
+        Log.i(TAG, "Paused ${activeHandles.size} active torrents")
+    }
+
+    /**
+     * Remove every active torrent and delete all cached torrent files.
+     */
+    fun clearCache(): Boolean {
+        Log.i(TAG, "Clearing torrent cache")
+
+        activeHandles.values.forEach { state ->
+            try {
+                state.handle.pause()
+                session?.remove(state.handle)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to remove torrent ${state.hash}", e)
+            }
+        }
+        activeHandles.clear()
+
+        return try {
+            if (downloadDir.exists()) {
+                downloadDir.listFiles()?.forEach { file ->
+                    file.deleteRecursively()
+                }
+            }
+            downloadDir.mkdirs()
+            Log.i(TAG, "Torrent cache cleared")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear torrent cache", e)
+            false
+        }
+    }
+
+    /**
      * Cleanup torrents older than maxAge milliseconds
      */
     fun cleanupOldTorrents(maxAgeMs: Long = 72 * 60 * 60 * 1000) {

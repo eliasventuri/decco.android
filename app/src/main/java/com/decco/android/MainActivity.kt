@@ -134,9 +134,10 @@ class MainActivity : AppCompatActivity() {
                         val imdbId = uri.getQueryParameter("imdbId") ?: ""
                         val season = uri.getQueryParameter("season")?.toIntOrNull() ?: 0
                         val episode = uri.getQueryParameter("episode")?.toIntOrNull() ?: 0
+                        val fileIdx = uri.getQueryParameter("fileIdx")?.toIntOrNull()
                         val startPos = uri.getQueryParameter("startPosition")?.toLongOrNull() ?: 0L
 
-                        launchPlayer(hash, title, subtitleTitle, imdbId, season, episode, startPos)
+                        launchPlayer(hash, title, subtitleTitle, imdbId, season, episode, startPos, fileIdx)
                         return true
                     } catch (e: Exception) {
                         Log.e("DeccoWebView", "Failed to launch player via scheme", e)
@@ -281,6 +282,7 @@ class MainActivity : AppCompatActivity() {
         season: Int, 
         episode: Int, 
         startPos: Long,
+        fileIdx: Int? = null,
         subtitlesJson: String? = null
     ) {
         if (hash.isEmpty()) {
@@ -292,7 +294,7 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Preparing stream...", Toast.LENGTH_SHORT).show()
 
         Thread {
-            startTorrentInEngine(hash, season, episode)
+            startTorrentInEngine(hash, season, episode, fileIdx)
             val ready = waitForTorrentReady(hash, timeoutMs = 60_000)
 
             runOnUiThread {
@@ -413,10 +415,11 @@ class MainActivity : AppCompatActivity() {
                 val imdbId = json.optString("imdbId")
                 val season = json.optInt("season", 0)
                 val episode = json.optInt("episode", 0)
+                val fileIdx = if (json.has("fileIdx") && !json.isNull("fileIdx")) json.optInt("fileIdx") else null
                 val startPos = json.optLong("startPosition", 0)
                 val subtitles = json.optJSONArray("subtitles")?.toString()
 
-                launchPlayer(hash, title, "", imdbId, season, episode, startPos, subtitles)
+                launchPlayer(hash, title, "", imdbId, season, episode, startPos, fileIdx, subtitles)
             } catch (e: Exception) {
                 Log.e("DeccoBridge", "Error parsing playNative", e)
             }
@@ -448,9 +451,26 @@ class MainActivity : AppCompatActivity() {
             
             // Apply immediately to EngineService
             val intent = Intent(this@MainActivity, EngineService::class.java).apply {
-                action = "UPDATE_NETWORK_PREFS"
+                action = EngineService.ACTION_UPDATE_NETWORK_PREFS
             }
             startService(intent)
+        }
+
+        @JavascriptInterface
+        fun clearTorrentCache(): Boolean {
+            Log.d("DeccoBridge", "clearTorrentCache")
+            return try {
+                startEngineService()
+                val intent = Intent(this@MainActivity, EngineService::class.java).apply {
+                    action = EngineService.ACTION_CLEAR_CACHE
+                }
+                startService(intent)
+                Toast.makeText(this@MainActivity, "Torrent cache cleared", Toast.LENGTH_SHORT).show()
+                true
+            } catch (e: Exception) {
+                Log.e("DeccoBridge", "Failed to clear torrent cache", e)
+                false
+            }
         }
     }
 
@@ -475,9 +495,10 @@ class MainActivity : AppCompatActivity() {
                     val imdbId = data.getQueryParameter("imdbId") ?: ""
                     val season = data.getQueryParameter("season")?.toIntOrNull() ?: 0
                     val episode = data.getQueryParameter("episode")?.toIntOrNull() ?: 0
+                    val fileIdx = data.getQueryParameter("fileIdx")?.toIntOrNull()
                     val startPos = data.getQueryParameter("startPosition")?.toLongOrNull() ?: 0L
                     
-                    launchPlayer(hash, title, subtitleTitle, imdbId, season, episode, startPos)
+                    launchPlayer(hash, title, subtitleTitle, imdbId, season, episode, startPos, fileIdx)
 
                     // Return a valid web URL so the WebView "syncs" with what we're playing.
                     // This way, when the player closes, the user is back at the movie/series page.
@@ -583,10 +604,11 @@ class MainActivity : AppCompatActivity() {
         return raw.substringBefore('?').substringBefore('/').trim()
     }
 
-    private fun startTorrentInEngine(hash: String, season: Int, episode: Int) {
+    private fun startTorrentInEngine(hash: String, season: Int, episode: Int, fileIdx: Int?) {
         try {
             val query = buildString {
                 val params = mutableListOf<String>()
+                if (fileIdx != null) params.add("fileIdx=$fileIdx")
                 if (season > 0) params.add("season=$season")
                 if (episode > 0) params.add("episode=$episode")
                 if (params.isNotEmpty()) {

@@ -363,11 +363,16 @@ class PlayerActivity : AppCompatActivity() {
 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     val errorMessage = when (error.errorCode) {
-                        androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED -> 
-                            "Codec Error: Decoding failed. Your hardware might not support this profile."
+                        androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED ->
+                            "Format not supported on this device. Try another quality or source, preferably 1080p/720p H.264."
+                        androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED ->
+                            "File type not supported. Try another source or quality."
                         androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
                         androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
-                            "Connection Error: Check local engine"
+                            "Connection error: check your network or local engine."
                         else -> "Playback Error: ${error.errorCodeName}"
                     }
                     
