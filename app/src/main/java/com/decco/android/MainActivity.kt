@@ -477,6 +477,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun isAllowMobileData(): Boolean {
+            val prefs = getSharedPreferences("DeccoPrefs", android.content.Context.MODE_PRIVATE)
+            return prefs.getBoolean("allowMobileData", false)
+        }
+
+        @JavascriptInterface
         fun setAllowMobileData(allow: Boolean) {
             Log.d("DeccoBridge", "setAllowMobileData: $allow")
             val prefs = getSharedPreferences("DeccoPrefs", android.content.Context.MODE_PRIVATE)
