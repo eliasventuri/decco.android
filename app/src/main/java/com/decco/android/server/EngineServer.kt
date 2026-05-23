@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.decco.android.engine.TorrentManager
 import fi.iki.elonen.NanoHTTPD
+import java.io.File
 
 /**
  * HTTP server replicating the full Decco Engine API on port 8888.
