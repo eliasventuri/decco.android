@@ -10,6 +10,18 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
+package com.decco.android.engine
+
+import android.os.Environment
+import android.util.Log
+import org.libtorrent4j.*
+import org.libtorrent4j.alerts.*
+import org.libtorrent4j.swig.*
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
+
 /**
  * Manages torrent sessions using LibTorrent4j.
  * Replicates the desktop engine's torrent-stream functionality.
@@ -19,6 +31,12 @@ class TorrentManager(private val downloadDir: File) {
     private var session: SessionManager? = null
     private val activeHandles = ConcurrentHashMap<String, TorrentState>()
     private var isMetered: Boolean = false
+
+    private val completedDownloadsDir = File(downloadDir.parentFile, "completed-downloads").apply {
+        if (!exists()) mkdirs()
+    }
+    private val downloadsMetaFile = File(completedDownloadsDir, "downloads-meta.json")
+
 
     /**
      * State for an active torrent
@@ -36,7 +54,13 @@ class TorrentManager(private val downloadDir: File) {
         var requestedFileIdx: Int? = null,
         var requestedSeason: Int? = null,
         var requestedEpisode: Int? = null,
-        var lastAccessed: Long = System.currentTimeMillis()
+        var lastAccessed: Long = System.currentTimeMillis(),
+        var isDownload: Boolean = false,
+        var downloadTitle: String? = null,
+        var imdbId: String? = null,
+        var season: Int? = null,
+        var episode: Int? = null,
+        var subtitlesJson: String? = null
     )
 
     companion object {
@@ -127,6 +151,7 @@ class TorrentManager(private val downloadDir: File) {
         })
 
         Log.i(TAG, "Torrent session started")
+        restoreDownloads()
     }
 
     /**
@@ -276,10 +301,14 @@ class TorrentManager(private val downloadDir: File) {
         state.selectedFileName = selectedFile.name
         state.selectedFileSize = selectedFile.size
         state.metadataReady = true
-        state.status = "ready"
+        state.status = if (state.isDownload) "downloading" else "ready"
 
         // Streaming optimization: force sequential mode and prioritize early pieces
         applyStreamingPriorities(handle, torrentInfo, selectedFile.index, selectedFile.size)
+
+        if (state.isDownload) {
+            persistDownloadMeta(hash, state)
+        }
 
         Log.i(TAG, "Selected ONLY: ${selectedFile.name} (${selectedFile.size / 1024 / 1024} MB)")
     }
@@ -590,34 +619,38 @@ class TorrentManager(private val downloadDir: File) {
 
     /**
      * Remove every active torrent and delete all cached torrent files.
+     * Respects the CLEAR CACHE rule: only clears transient browser/player streaming cache.
      */
     fun clearCache(): Boolean {
-        Log.i(TAG, "Clearing torrent cache")
+        Log.i(TAG, "Clearing torrent cache (streaming only)")
 
-        activeHandles.values.forEach { state ->
+        val streamingStates = activeHandles.filter { !it.value.isDownload }
+        streamingStates.values.forEach { state ->
             try {
                 state.handle.pause()
                 session?.remove(state.handle)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to remove torrent ${state.hash}", e)
             }
+            activeHandles.remove(state.hash)
         }
-        activeHandles.clear()
 
         return try {
             if (downloadDir.exists()) {
                 downloadDir.listFiles()?.forEach { file ->
-                    file.deleteRecursively()
+                    if (file.isDirectory && file.name.length == 20) {
+                        file.deleteRecursively()
+                    }
                 }
             }
-            downloadDir.mkdirs()
-            Log.i(TAG, "Torrent cache cleared")
+            Log.i(TAG, "Torrent streaming cache cleared")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to clear torrent cache", e)
             false
         }
     }
+
 
     /**
      * Cleanup torrents older than maxAge milliseconds
@@ -636,5 +669,444 @@ class TorrentManager(private val downloadDir: File) {
         if (toRemove.isNotEmpty()) {
             Log.i(TAG, "Cleanup complete. Removed ${toRemove.size} old torrents.")
         }
+    }
+
+    // ==========================================
+    //  NATIVE DOWNLOAD SYSTEM IMPLEMENTATION
+    // ==========================================
+
+    fun startDownload(
+        hash: String,
+        title: String,
+        imdbId: String,
+        season: Int,
+        episode: Int,
+        fileIdx: Int?
+    ): Map<String, Any?> {
+        val sess = session ?: return mapOf("error" to "Session not initialized")
+
+        activeHandles[hash]?.let { existing ->
+            if (existing.handle.isValid) {
+                existing.isDownload = true
+                existing.downloadTitle = title
+                existing.imdbId = imdbId
+                existing.season = season
+                existing.episode = episode
+                if (fileIdx != null) existing.requestedFileIdx = fileIdx
+                existing.lastAccessed = System.currentTimeMillis()
+
+                if (existing.status == "paused") {
+                    existing.handle.resume()
+                    existing.status = "downloading"
+                }
+
+                persistDownloadMeta(hash, existing)
+                return getDownloadStatusMap(existing)
+            } else {
+                activeHandles.remove(hash)
+            }
+        }
+
+        val saveDir = File(completedDownloadsDir, hash.take(16))
+        if (!saveDir.exists()) saveDir.mkdirs()
+
+        val trackerParams = TRACKERS.joinToString("&tr=") { java.net.URLEncoder.encode(it, "UTF-8") }
+        val magnetUri = "magnet:?xt=urn:btih:$hash&tr=$trackerParams"
+
+        val flags = torrent_flags_t()
+        sess.download(magnetUri, saveDir, flags)
+
+        val p = AddTorrentParams.parseMagnetUri("magnet:?xt=urn:btih:$hash")
+        val infoHashes = p.swig().info_hashes
+        val swigHash = infoHashes.v1
+        val sHash = Sha1Hash(swigHash)
+        val handle = sess.find(sHash)
+
+        if (handle == null || !handle.isValid) {
+            Log.e(TAG, "Failed to find valid handle for download $hash")
+            return mapOf("error" to "Failed to start download")
+        }
+
+        val state = TorrentState(
+            hash = hash,
+            handle = handle,
+            requestedFileIdx = fileIdx,
+            requestedSeason = season,
+            requestedEpisode = episode,
+            isDownload = true,
+            downloadTitle = title,
+            imdbId = imdbId,
+            season = season,
+            episode = episode,
+            status = "loading"
+        )
+
+        activeHandles[hash] = state
+        persistDownloadMeta(hash, state)
+
+        if (handle.status().hasMetadata()) {
+            onMetadataReceived(hash, handle)
+        }
+
+        downloadSubtitlesBackground(hash, title, imdbId, season, episode, saveDir)
+
+        return getDownloadStatusMap(state)
+    }
+
+    private fun getDownloadStatusMap(state: TorrentState): Map<String, Any?> {
+        return mapOf(
+            "status" to state.status,
+            "hash" to state.hash,
+            "title" to (state.downloadTitle ?: "Video")
+        )
+    }
+
+    fun pauseDownload(hash: String) {
+        val state = activeHandles[hash]
+        if (state != null) {
+            state.handle.pause()
+            state.status = "paused"
+            persistDownloadMeta(hash, state)
+        } else {
+            val meta = loadDownloadsMeta()
+            val downloads = meta.optJSONObject("downloads")
+            val item = downloads?.optJSONObject(hash)
+            if (item != null) {
+                item.put("status", "paused")
+                saveDownloadsMeta(meta)
+            }
+        }
+        Log.i(TAG, "Paused download $hash")
+    }
+
+    fun resumeDownload(hash: String) {
+        val state = activeHandles[hash]
+        if (state != null) {
+            state.handle.resume()
+            state.status = "downloading"
+            persistDownloadMeta(hash, state)
+            Log.i(TAG, "Resumed active download $hash")
+        } else {
+            val meta = loadDownloadsMeta()
+            val downloads = meta.optJSONObject("downloads")
+            val item = downloads?.optJSONObject(hash)
+            if (item != null) {
+                val title = item.optString("title", "Video")
+                val imdbId = item.optString("imdbId", "")
+                val season = item.optInt("season", 0)
+                val episode = item.optInt("episode", 0)
+                val fileIdx = if (item.has("fileIdx")) item.optInt("fileIdx") else null
+                startDownload(hash, title, imdbId, season, episode, if (fileIdx == -1) null else fileIdx)
+                Log.i(TAG, "Restored and resumed download $hash")
+            }
+        }
+    }
+
+    fun deleteDownload(hash: String) {
+        val state = activeHandles.remove(hash)
+        if (state != null) {
+            try {
+                state.handle.pause()
+                session?.remove(state.handle)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing download torrent $hash: ${e.message}")
+            }
+        }
+
+        val meta = loadDownloadsMeta()
+        val downloads = meta.optJSONObject("downloads")
+        val item = downloads?.optJSONObject(hash)
+        if (item != null) {
+            val downloadDirStr = item.optString("downloadDir")
+            if (downloadDirStr.isNotEmpty()) {
+                val dir = File(downloadDirStr)
+                try {
+                    dir.deleteRecursively()
+                    Log.i(TAG, "Deleted download files: $downloadDirStr")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to delete download files: ${e.message}")
+                }
+            }
+            downloads.remove(hash)
+            saveDownloadsMeta(meta)
+        }
+        Log.i(TAG, "Deleted download $hash")
+    }
+
+    fun restoreDownloads() {
+        val meta = loadDownloadsMeta()
+        val downloads = meta.optJSONObject("downloads") ?: return
+        val keys = downloads.keys()
+        while (keys.hasNext()) {
+            val hash = keys.next()
+            val item = downloads.getJSONObject(hash)
+            val status = item.optString("status")
+            if (status == "downloading" || status == "loading") {
+                val title = item.optString("title", "Video")
+                val imdbId = item.optString("imdbId", "")
+                val season = item.optInt("season", 0)
+                val episode = item.optInt("episode", 0)
+                val fileIdx = if (item.has("fileIdx")) item.optInt("fileIdx") else null
+                startDownload(hash, title, imdbId, season, episode, if (fileIdx == -1) null else fileIdx)
+            }
+        }
+    }
+
+    fun hasActiveDownloads(): Boolean {
+        return activeHandles.values.any { it.isDownload && it.status == "downloading" }
+    }
+
+    fun getDownloadsList(): List<Map<String, Any?>> {
+        val result = mutableListOf<Map<String, Any?>>()
+        val meta = loadDownloadsMeta()
+        val downloads = meta.optJSONObject("downloads") ?: return emptyList()
+
+        val keys = downloads.keys()
+        while (keys.hasNext()) {
+            val hash = keys.next()
+            val item = downloads.getJSONObject(hash)
+            val active = activeHandles[hash]
+
+            if (active != null && active.isDownload && active.handle.isValid) {
+                val handle = active.handle
+                val status = handle.status()
+                val fileIndex = active.selectedFileIndex
+                val progress = if (fileIndex >= 0) getFileProgress(handle, fileIndex) else 0.0
+
+                val isFinished = progress >= 1.0
+                if (isFinished && active.status == "downloading") {
+                    active.status = "completed"
+                    persistDownloadMeta(hash, active)
+                }
+
+                val liveItem = mutableMapOf<String, Any?>()
+                liveItem["hash"] = hash
+                liveItem["title"] = active.downloadTitle ?: item.optString("title", "Video")
+                liveItem["imdbId"] = active.imdbId ?: item.optString("imdbId", "")
+                liveItem["season"] = active.season ?: item.optInt("season", 0)
+                liveItem["episode"] = active.episode ?: item.optInt("episode", 0)
+                liveItem["fileIdx"] = active.selectedFileIndex
+                liveItem["fileName"] = active.selectedFileName ?: item.optString("fileName", "")
+                liveItem["fileSize"] = active.selectedFileSize
+                liveItem["status"] = active.status
+                liveItem["progress"] = progress
+                liveItem["speed"] = if (active.status == "paused" || isFinished) 0.0 else (status.downloadPayloadRate().toDouble())
+                liveItem["peers"] = if (active.status == "paused" || isFinished) 0 else status.numPeers()
+                liveItem["downloadDir"] = item.optString("downloadDir", "")
+
+                val subArray = item.optJSONArray("subtitles") ?: org.json.JSONArray()
+                val subList = mutableListOf<Map<String, String>>()
+                for (i in 0 until subArray.length()) {
+                    val subObj = subArray.getJSONObject(i)
+                    subList.add(mapOf(
+                        "lang" to subObj.optString("lang"),
+                        "label" to subObj.optString("label"),
+                        "path" to subObj.optString("path")
+                    ))
+                }
+                liveItem["subtitles"] = subList
+                result.add(liveItem)
+            } else {
+                val storedItem = mutableMapOf<String, Any?>()
+                storedItem["hash"] = hash
+                storedItem["title"] = item.optString("title", "Video")
+                storedItem["imdbId"] = item.optString("imdbId", "")
+                storedItem["season"] = item.optInt("season", 0)
+                storedItem["episode"] = item.optInt("episode", 0)
+                storedItem["fileIdx"] = item.optInt("fileIdx", -1)
+                storedItem["fileName"] = item.optString("fileName", "")
+                storedItem["fileSize"] = item.optLong("fileSize", 0L)
+                storedItem["status"] = item.optString("status", "paused")
+
+                val savedStatus = item.optString("status")
+                storedItem["progress"] = if (savedStatus == "completed") 1.0 else 0.0
+                storedItem["speed"] = 0.0
+                storedItem["peers"] = 0
+                storedItem["downloadDir"] = item.optString("downloadDir", "")
+
+                val subArray = item.optJSONArray("subtitles") ?: org.json.JSONArray()
+                val subList = mutableListOf<Map<String, String>>()
+                for (i in 0 until subArray.length()) {
+                    val subObj = subArray.getJSONObject(i)
+                    subList.add(mapOf(
+                        "lang" to subObj.optString("lang"),
+                        "label" to subObj.optString("label"),
+                        "path" to subObj.optString("path")
+                    ))
+                }
+                storedItem["subtitles"] = subList
+                result.add(storedItem)
+            }
+        }
+
+        return result
+    }
+
+    private fun loadDownloadsMeta(): org.json.JSONObject {
+        if (!downloadsMetaFile.exists()) {
+            return org.json.JSONObject().put("downloads", org.json.JSONObject())
+        }
+        return try {
+            val content = downloadsMetaFile.readText()
+            org.json.JSONObject(content)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading downloads meta: ${e.message}")
+            org.json.JSONObject().put("downloads", org.json.JSONObject())
+        }
+    }
+
+    private fun saveDownloadsMeta(meta: org.json.JSONObject) {
+        try {
+            downloadsMetaFile.writeText(meta.toString(2))
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving downloads meta: ${e.message}")
+        }
+    }
+
+    private fun persistDownloadMeta(hash: String, state: TorrentState) {
+        val meta = loadDownloadsMeta()
+        val downloads = meta.optJSONObject("downloads") ?: org.json.JSONObject()
+
+        val item = org.json.JSONObject().apply {
+            put("hash", state.hash)
+            put("title", state.downloadTitle ?: "Video")
+            put("imdbId", state.imdbId ?: "")
+            put("season", state.season ?: 0)
+            put("episode", state.episode ?: 0)
+            put("fileIdx", state.requestedFileIdx ?: -1)
+            put("fileName", state.selectedFileName ?: "")
+            put("fileSize", state.selectedFileSize)
+            put("downloadDir", File(completedDownloadsDir, hash.take(16)).absolutePath)
+            put("subtitles", org.json.JSONArray(state.subtitlesJson ?: "[]"))
+
+            val currentStatus = state.status
+            val progress = getFileProgress(state.handle, state.selectedFileIndex)
+            val computedStatus = if (progress >= 1.0) "completed" else currentStatus
+
+            put("status", computedStatus)
+            put("startedAt", System.currentTimeMillis())
+
+            val existingItem = downloads.optJSONObject(hash)
+            if (existingItem != null) {
+                put("startedAt", existingItem.optLong("startedAt", System.currentTimeMillis()))
+                if (computedStatus == "completed" && !existingItem.has("completedAt")) {
+                    put("completedAt", System.currentTimeMillis())
+                } else if (existingItem.has("completedAt")) {
+                    put("completedAt", existingItem.optLong("completedAt"))
+                }
+            }
+        }
+
+        downloads.put(hash, item)
+        meta.put("downloads", downloads)
+        saveDownloadsMeta(meta)
+    }
+
+    private fun getFileProgress(handle: TorrentHandle?, fileIndex: Int): Double {
+        if (handle == null || !handle.isValid || fileIndex < 0) return 0.0
+        val torrentInfo = handle.torrentFile() ?: return 0.0
+        val fileStorage = torrentInfo.files()
+        if (fileIndex >= fileStorage.numFiles()) return 0.0
+
+        val pieceLength = torrentInfo.pieceLength().toLong()
+        if (pieceLength <= 0) return 0.0
+
+        val fileOffset = fileStorage.fileOffset(fileIndex)
+        val fileLength = fileStorage.fileSize(fileIndex)
+        if (fileLength <= 0) return 1.0
+
+        val startPiece = (fileOffset / pieceLength).toInt()
+        val endPiece = ((fileOffset + fileLength - 1L) / pieceLength).toInt()
+
+        var have = 0
+        val total = endPiece - startPiece + 1
+
+        for (i in startPiece..endPiece) {
+            if (handle.havePiece(i)) {
+                have++
+            }
+        }
+
+        return if (total > 0) have.toDouble() / total.toDouble() else 0.0
+    }
+
+    private fun srtToWebVTT(srtContent: String): String {
+        var vtt = "WEBVTT\n\n"
+        val lines = srtContent.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.contains("-->") && trimmed.contains(",")) {
+                vtt += trimmed.replace(",", ".") + "\n"
+            } else {
+                vtt += trimmed + "\n"
+            }
+        }
+        return vtt
+    }
+
+    private fun downloadSubtitlesBackground(
+        hash: String,
+        title: String,
+        imdbId: String,
+        season: Int,
+        episode: Int,
+        saveDir: File
+    ) {
+        if (imdbId.isEmpty()) return
+        Thread {
+            try {
+                val urlString = "https://decco.tv/api/subtitles/external?imdbId=$imdbId&season=$season&episode=$episode"
+                val conn = java.net.URL(urlString).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                if (conn.responseCode == 200) {
+                    val responseText = conn.inputStream.bufferedReader().use { it.readText() }
+                    val responseObj = org.json.JSONObject(responseText)
+                    val subtitles = responseObj.optJSONArray("subtitles") ?: responseObj.optJSONArray("tracks") ?: org.json.JSONArray()
+
+                    val savedSubs = org.json.JSONArray()
+                    val limit = minOf(10, subtitles.length())
+                    for (i in 0 until limit) {
+                        try {
+                            val sub = subtitles.getJSONObject(i)
+                            val subUrl = sub.optString("url", sub.optString("src"))
+                            if (subUrl.isEmpty()) continue
+
+                            val subConn = java.net.URL(subUrl).openConnection() as java.net.HttpURLConnection
+                            subConn.connectTimeout = 10000
+                            subConn.readTimeout = 10000
+                            if (subConn.responseCode == 200) {
+                                var content = subConn.inputStream.bufferedReader().use { it.readText() }
+                                val lang = sub.optString("lang", sub.optString("language", "unknown"))
+                                if (!content.trim().startsWith("WEBVTT")) {
+                                    content = srtToWebVTT(content)
+                                }
+
+                                val safeName = title.replace(Regex("[^a-zA-Z0-9\\s.-]"), "").take(80)
+                                val vttFile = File(saveDir, "$safeName.$lang.vtt")
+                                vttFile.writeText(content)
+
+                                val subItem = org.json.JSONObject().apply {
+                                    put("lang", lang)
+                                    put("label", sub.optString("label", lang))
+                                    put("path", vttFile.absolutePath)
+                                }
+                                savedSubs.put(subItem)
+                                Log.i(TAG, "Saved downloaded subtitle: ${vttFile.absolutePath}")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to download subtitle item: ${e.message}")
+                        }
+                    }
+
+                    activeHandles[hash]?.let { state ->
+                        state.subtitlesJson = savedSubs.toString()
+                        persistDownloadMeta(hash, state)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to download subtitles background: ${e.message}")
+            }
+        }.start()
     }
 }

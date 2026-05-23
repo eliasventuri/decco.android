@@ -1,6 +1,8 @@
 package com.decco.android.server
 
 import android.util.Log
+import android.content.Context
+import android.content.Intent
 import com.decco.android.engine.TorrentManager
 import fi.iki.elonen.NanoHTTPD
 
@@ -18,7 +20,8 @@ import fi.iki.elonen.NanoHTTPD
  */
 class EngineServer(
     port: Int,
-    private val torrentManager: TorrentManager
+    private val torrentManager: TorrentManager,
+    private val context: android.content.Context
 ) : NanoHTTPD("127.0.0.1", port) {
 
     override fun serve(session: IHTTPSession): Response {
@@ -43,6 +46,139 @@ class EngineServer(
             uri == "/status/check" -> {
                 cors(jsonResponse(Response.Status.OK,
                     """{"status":"ok","platform":"android","version":"1.0.0"}"""))
+            }
+
+            // ---- Start download ----
+            uri == "/download/start" -> {
+                val p = session.parms
+                val hash = p["hash"] ?: return cors(jsonResponse(Response.Status.BAD_REQUEST, """{"error":"hash is required"}"""))
+                val title = p["title"] ?: "Video"
+                val imdbId = p["imdbId"] ?: ""
+                val season = p["season"]?.toIntOrNull() ?: 0
+                val episode = p["episode"]?.toIntOrNull() ?: 0
+                val fileIdx = p["fileIdx"]?.toIntOrNull()
+
+                val meta = torrentManager.startDownload(hash, title, imdbId, season, episode, fileIdx)
+                cors(jsonResponse(Response.Status.OK, """{"status":"started","hash":"$hash","title":"${meta["title"] ?: title}"}"""))
+            }
+
+            // ---- Downloads list ----
+            uri == "/download/list" -> {
+                val list = torrentManager.getDownloadsList()
+                val arr = org.json.JSONArray()
+                for (map in list) {
+                    val obj = org.json.JSONObject()
+                    for ((k, v) in map) {
+                        if (v is List<*>) {
+                            val subArr = org.json.JSONArray()
+                            for (subItem in v) {
+                                if (subItem is Map<*, *>) {
+                                    val subObj = org.json.JSONObject()
+                                    for ((sk, sv) in subItem) {
+                                        subObj.put(sk.toString(), sv)
+                                    }
+                                    subArr.put(subObj)
+                                }
+                            }
+                            obj.put(k, subArr)
+                        } else {
+                            obj.put(k, v ?: org.json.JSONObject.NULL)
+                        }
+                    }
+                    arr.put(obj)
+                }
+                val responseJson = org.json.JSONObject().put("downloads", arr).toString()
+                cors(jsonResponse(Response.Status.OK, responseJson))
+            }
+
+            // ---- Pause download ----
+            uri.matches(Regex("/download/pause/([a-fA-F0-9]+)")) -> {
+                val hash = uri.substringAfter("/download/pause/")
+                torrentManager.pauseDownload(hash)
+                cors(jsonResponse(Response.Status.OK, """{"status":"paused","hash":"$hash"}"""))
+            }
+
+            // ---- Resume download ----
+            uri.matches(Regex("/download/resume/([a-fA-F0-9]+)")) -> {
+                val hash = uri.substringAfter("/download/resume/")
+                torrentManager.resumeDownload(hash)
+                cors(jsonResponse(Response.Status.OK, """{"status":"resumed","hash":"$hash"}"""))
+            }
+
+            // ---- Delete download ----
+            uri.matches(Regex("/download/delete/([a-fA-F0-9]+)")) -> {
+                val hash = uri.substringAfter("/download/delete/")
+                torrentManager.deleteDownload(hash)
+                cors(jsonResponse(Response.Status.OK, """{"status":"deleted","hash":"$hash"}"""))
+            }
+
+            // ---- Open download (Play locally) ----
+            uri.matches(Regex("/download/open/([a-fA-F0-9]+)")) -> {
+                val hash = uri.substringAfter("/download/open/")
+                val list = torrentManager.getDownloadsList()
+                val match = list.find { (it["hash"] as? String)?.lowercase() == hash.lowercase() }
+                
+                if (match != null) {
+                    val title = match["title"] as? String ?: "Video"
+                    val imdbId = match["imdbId"] as? String ?: ""
+                    val season = match["season"] as? Int ?: 0
+                    val episode = match["episode"] as? Int ?: 0
+                    val fileIdx = match["fileIdx"] as? Int
+                    
+                    val subList = match["subtitles"] as? List<Map<String, String>>
+                    val subArray = org.json.JSONArray()
+                    subList?.forEach { sub ->
+                        val subObj = org.json.JSONObject()
+                        subObj.put("language", sub["lang"])
+                        subObj.put("label", sub["label"])
+                        subObj.put("url", "http://127.0.0.1:8888/download/subtitle/$hash/${sub["lang"]}")
+                        subArray.put(subObj)
+                    }
+
+                    val streamUrl = "http://127.0.0.1:8888/proxy/$hash"
+                    val playerIntent = com.decco.android.player.PlayerActivity.createIntent(
+                        context = context,
+                        streamUrl = streamUrl,
+                        hash = hash,
+                        title = title,
+                        subtitleTitle = if (season > 0) "S${season}E${episode}" else "",
+                        startPosition = 0,
+                        imdbId = imdbId,
+                        season = season,
+                        episode = episode,
+                        subtitlesJson = if (subArray.length() > 0) subArray.toString() else null
+                    )
+                    playerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(playerIntent)
+                    cors(jsonResponse(Response.Status.OK, """{"status":"opened","hash":"$hash"}"""))
+                } else {
+                    cors(jsonResponse(Response.Status.NOT_FOUND, """{"error":"Download not found"}"""))
+                }
+            }
+
+            // ---- Download subtitle ----
+            uri.matches(Regex("/download/subtitle/([a-fA-F0-9]+)/(\\w+)")) -> {
+                val parts = uri.split("/")
+                val hash = parts[3]
+                val lang = parts[4]
+                
+                val list = torrentManager.getDownloadsList()
+                val match = list.find { (it["hash"] as? String)?.lowercase() == hash.lowercase() }
+                val subs = match?.get("subtitles") as? List<Map<String, String>>
+                val subMatch = subs?.find { it["lang"] == lang }
+                val filePath = subMatch?.get("path")
+                
+                if (filePath != null) {
+                    val file = java.io.File(filePath)
+                    if (file.exists()) {
+                        val input = java.io.FileInputStream(file)
+                        cors(newFixedLengthResponse(Response.Status.OK, "text/vtt", input, file.length()))
+                    } else {
+                        cors(jsonResponse(Response.Status.NOT_FOUND, """{"error":"Subtitle file not found"}"""))
+                    }
+                } else {
+                    cors(jsonResponse(Response.Status.NOT_FOUND, """{"error":"Subtitle not found"}"""))
+                }
             }
 
             // ---- Start torrent ----

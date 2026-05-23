@@ -426,6 +426,39 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun downloadNative(jsonData: String) {
+            Log.d("DeccoBridge", "downloadNative called with: $jsonData")
+            try {
+                val json = org.json.JSONObject(jsonData)
+                val hash = json.optString("hash")
+                val title = json.optString("title")
+                val imdbId = json.optString("imdbId")
+                val season = json.optInt("season", 0)
+                val episode = json.optInt("episode", 0)
+                val fileIdx = if (json.has("fileIdx") && !json.isNull("fileIdx")) json.optInt("fileIdx") else null
+
+                val manager = EngineService.torrentManagerInstance
+                if (manager != null) {
+                    manager.startDownload(hash, title, imdbId, season, episode, fileIdx)
+                    
+                    // Redirect WebView to "/downloads" page on the UI thread
+                    runOnUiThread {
+                        val currentUrl = webView.url ?: DECCO_URL
+                        val baseUrl = try {
+                            val uri = android.net.Uri.parse(currentUrl)
+                            "${uri.scheme}://${uri.host}${if (uri.port != -1) ":${uri.port}" else ""}"
+                        } catch (e: Exception) {
+                            DECCO_URL
+                        }
+                        webView.loadUrl("$baseUrl/downloads")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("DeccoBridge", "Error in downloadNative bridge", e)
+            }
+        }
+
+        @JavascriptInterface
         fun showToast(message: String) {
             Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
         }

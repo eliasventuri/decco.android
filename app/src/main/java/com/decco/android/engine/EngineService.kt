@@ -34,6 +34,51 @@ class EngineService : Service() {
     private var connectivityManager: ConnectivityManager? = null
     private val cleanupHandler = Handler(Looper.getMainLooper())
 
+    private val notificationUpdateHandler = Handler(Looper.getMainLooper())
+    private val notificationUpdateRunnable = object : Runnable {
+        override fun run() {
+            val manager = torrentManager
+            if (manager != null && manager.hasActiveDownloads()) {
+                val downloads = manager.getDownloadsList()
+                val activeList = downloads.filter { it["status"] == "downloading" }
+                if (activeList.isNotEmpty()) {
+                    val first = activeList.first()
+                    val title = first["title"] as? String ?: "Video"
+                    val progressVal = ((first["progress"] as? Double) ?: 0.0) * 100
+                    val speedBytes = (first["speed"] as? Double) ?: 0.0
+                    val speedMb = speedBytes / (1024 * 1024)
+                    val progressStr = String.format(java.util.Locale.US, "%.1f%%", progressVal)
+                    val speedStr = String.format(java.util.Locale.US, "%.2f MB/s", speedMb)
+                    
+                    updateNotification("Descargando: $title ($progressStr • $speedStr)")
+                } else {
+                    updateNotification("Engine running")
+                }
+            } else {
+                updateNotification("Engine running")
+            }
+            notificationUpdateHandler.postDelayed(this, 3000)
+        }
+    }
+
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            checkNetworkMetered()
+        }
+
+        override fun onLost(network: Network) {
+            checkNetworkMetered()
+        }
+
+        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+            checkNetworkMetered()
+        }
+    }
+
+    override fun onCreate() {
+
+
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             checkNetworkMetered()
@@ -56,18 +101,22 @@ class EngineService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification("Engine starting..."))
 
         // Initialize components
-        val downloadDir = File(filesDir, "downloads")
+        val downloadDir = File(getExternalFilesDir(null) ?: filesDir, "downloads")
         
         // Ensure directories exist
         downloadDir.mkdirs()
 
-        torrentManager = TorrentManager(downloadDir).also { it.start() }
+        torrentManager = TorrentManager(downloadDir).also { 
+            it.start() 
+            torrentManagerInstance = it
+        }
 
         // Start HTTP server with all components
         try {
             server = EngineServer(
                 port = PORT,
-                torrentManager = torrentManager!!
+                torrentManager = torrentManager!!,
+                context = this
             )
             server?.start()
             isRunning = true
@@ -89,6 +138,7 @@ class EngineService : Service() {
 
         // Schedule periodic cache cleanup (every hour)
         scheduleCacheCleanup()
+        notificationUpdateHandler.post(notificationUpdateRunnable)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -100,11 +150,15 @@ class EngineService : Service() {
                 checkNetworkMetered()
             }
             ACTION_APP_BACKGROUND -> {
-                Log.i(TAG, "App moved to background. Pausing torrents and stopping engine service.")
-                torrentManager?.pauseAllTorrents()
-                updateNotification("Engine paused")
-                stopSelf()
-                restartMode = START_NOT_STICKY
+                if (torrentManager?.hasActiveDownloads() == true) {
+                    Log.i(TAG, "App moved to background, but downloads are active. Shielding downloads.")
+                } else {
+                    Log.i(TAG, "App moved to background. Pausing torrents and stopping engine service.")
+                    torrentManager?.pauseAllTorrents()
+                    updateNotification("Engine paused")
+                    stopSelf()
+                    restartMode = START_NOT_STICKY
+                }
             }
             ACTION_CLEAR_CACHE -> {
                 Log.i(TAG, "Clearing torrent cache from service action")
@@ -119,20 +173,26 @@ class EngineService : Service() {
 
     override fun onDestroy() {
         Log.i(TAG, "EngineService destroyed")
+        notificationUpdateHandler.removeCallbacks(notificationUpdateRunnable)
         cleanupHandler.removeCallbacksAndMessages(null)
         try {
             connectivityManager?.unregisterNetworkCallback(networkCallback)
         } catch (_: Exception) {}
         server?.stop()
         torrentManager?.stop()
+        torrentManagerInstance = null
         isRunning = false
         super.onDestroy()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.i(TAG, "App task removed. Pausing torrents and stopping engine service.")
-        torrentManager?.pauseAllTorrents()
-        stopSelf()
+        if (torrentManager?.hasActiveDownloads() == true) {
+            Log.i(TAG, "App task removed, but downloads are active. Keeping engine service running in background.")
+        } else {
+            Log.i(TAG, "App task removed. Pausing torrents and stopping engine service.")
+            torrentManager?.pauseAllTorrents()
+            stopSelf()
+        }
         super.onTaskRemoved(rootIntent)
     }
 
@@ -221,6 +281,10 @@ class EngineService : Service() {
 
         @Volatile
         var isRunning = false
+            private set
+
+        @Volatile
+        var torrentManagerInstance: TorrentManager? = null
             private set
     }
 }
