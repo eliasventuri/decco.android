@@ -183,6 +183,36 @@ class TorrentManager(private val downloadDir: File) {
             }
         }
 
+        // Check downloads database first
+        val meta = loadDownloadsMeta()
+        val downloads = meta.optJSONObject("downloads")
+        val entry = downloads?.optJSONObject(hash)
+        if (entry != null) {
+            val status = entry.optString("status")
+            if (status == "completed") {
+                Log.i(TAG, "Torrent $hash is fully completed download. Bypassing startTorrent.")
+                return null
+            } else {
+                // Ongoing or paused download - start/resume it in the download manager folder to share progress!
+                Log.i(TAG, "Torrent $hash is in downloads database (status: $status). Resuming download context.")
+                val title = entry.optString("title", "Video")
+                val imdbId = entry.optString("imdbId", "")
+                val dlSeason = entry.optInt("season", 0)
+                val dlEpisode = entry.optInt("episode", 0)
+                val dlFileIdx = if (entry.has("fileIdx")) entry.optInt("fileIdx") else null
+                
+                startDownload(hash, title, imdbId, dlSeason, dlEpisode, if (dlFileIdx == -1) null else dlFileIdx)
+                
+                val state = activeHandles[hash]
+                if (state != null) {
+                    state.requestedFileIdx = fileIdx
+                    state.requestedSeason = season
+                    state.requestedEpisode = episode
+                    return state
+                }
+            }
+        }
+
         Log.i(TAG, "Starting torrent: hash=$hash fileIdx=$fileIdx S${season}E${episode}")
 
         // Build magnet URI with trackers
@@ -349,7 +379,28 @@ class TorrentManager(private val downloadDir: File) {
      * Get live status info for a torrent (peers, speed, progress)
      */
     fun getStatus(hash: String): Map<String, Any?> {
-        val state = activeHandles[hash] ?: return mapOf("status" to "not_started")
+        val state = activeHandles[hash]
+        if (state == null) {
+            val meta = loadDownloadsMeta()
+            val downloads = meta.optJSONObject("downloads")
+            val entry = downloads?.optJSONObject(hash)
+            if (entry != null && entry.optString("status") == "completed") {
+                return mapOf(
+                    "status" to "ready",
+                    "metadataReady" to true,
+                    "fileName" to entry.optString("fileName", "video.mp4"),
+                    "fileSize" to entry.optLong("fileSize", 0L),
+                    "fileIdx" to entry.optInt("fileIdx", -1),
+                    "totalFiles" to 1,
+                    "duration" to entry.optDouble("duration", 0.0),
+                    "peers" to 0,
+                    "seeds" to 0,
+                    "speed" to "0.00",
+                    "progress" to "100.0"
+                )
+            }
+            return mapOf("status" to "not_started")
+        }
         val handle = state.handle
         val status = handle.status()
 
