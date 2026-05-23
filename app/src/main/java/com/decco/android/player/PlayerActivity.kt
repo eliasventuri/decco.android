@@ -326,11 +326,17 @@ class PlayerActivity : AppCompatActivity() {
 
             // Sync System Bars with Controller Visibility
             playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
-                val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
-                if (visibility == View.VISIBLE) {
-                    windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
-                } else {
-                    windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+                try {
+                    val windowInstance = window ?: return@ControllerVisibilityListener
+                    val decorView = windowInstance.decorView ?: return@ControllerVisibilityListener
+                    val windowInsetsController = WindowCompat.getInsetsController(windowInstance, decorView)
+                    if (visibility == View.VISIBLE) {
+                        windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+                    } else {
+                        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error syncing system bars with controller visibility", e)
                 }
             })
 
@@ -341,16 +347,6 @@ class PlayerActivity : AppCompatActivity() {
             btnPlay?.setOnClickListener { exoPlayer.play() }
             btnPause?.setOnClickListener { exoPlayer.pause() }
 
-            fun updatePlayPauseButtons(isPlaying: Boolean) {
-                if (isPlaying) {
-                    btnPlay?.visibility = View.GONE
-                    btnPause?.visibility = View.VISIBLE
-                } else {
-                    btnPlay?.visibility = View.VISIBLE
-                    btnPause?.visibility = View.GONE
-                }
-            }
-
             // Custom Touch Logic: Tap anywhere to toggle Play/Pause
             playerView.setOnClickListener {
                 if (exoPlayer.isPlaying) {
@@ -359,6 +355,16 @@ class PlayerActivity : AppCompatActivity() {
                 } else {
                     exoPlayer.play()
                     playerView.showController() 
+                }
+            }
+
+            fun updatePlayPauseButtons(isPlaying: Boolean) {
+                if (isPlaying) {
+                    btnPlay?.visibility = View.GONE
+                    btnPause?.visibility = View.VISIBLE
+                } else {
+                    btnPlay?.visibility = View.VISIBLE
+                    btnPause?.visibility = View.GONE
                 }
             }
             
@@ -673,10 +679,16 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun goFullscreen() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        try {
+            val windowInstance = window ?: return
+            val decorView = windowInstance.decorView ?: return
+            WindowCompat.setDecorFitsSystemWindows(windowInstance, false)
+            WindowInsetsControllerCompat(windowInstance, decorView).let { controller ->
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error applying fullscreen in PlayerActivity", e)
         }
     }
 

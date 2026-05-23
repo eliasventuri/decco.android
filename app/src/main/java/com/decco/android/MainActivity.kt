@@ -573,13 +573,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun goFullscreen() {
-        val decorView = window.decorView
-        decorView.post {
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            WindowInsetsControllerCompat(window, decorView).let { controller ->
-                controller.hide(WindowInsetsCompat.Type.systemBars())
-                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        try {
+            val windowInstance = window ?: return
+            val decorView = windowInstance.decorView ?: return
+            decorView.post {
+                try {
+                    if (isFinishing || isDestroyed) return@post
+                    WindowCompat.setDecorFitsSystemWindows(windowInstance, false)
+                    WindowInsetsControllerCompat(windowInstance, decorView).let { controller ->
+                        controller.hide(WindowInsetsCompat.Type.systemBars())
+                        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error applying fullscreen in post", e)
+                }
             }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error setting up fullscreen", e)
         }
     }
 
