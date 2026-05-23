@@ -716,6 +716,11 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
+    override fun onStart() {
+        super.onStart()
+        startEngineService()
+    }
+
     override fun onDestroy() {
         webView.destroy()
         super.onDestroy()

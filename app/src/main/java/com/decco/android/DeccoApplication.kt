@@ -48,6 +48,6 @@ class DeccoApplication : Application(), Application.ActivityLifecycleCallbacks {
 
     companion object {
         private const val TAG = "DeccoApplication"
-        private const val BACKGROUND_STOP_DELAY_MS = 1500L
+        private const val BACKGROUND_STOP_DELAY_MS = 10000L
     }
 }

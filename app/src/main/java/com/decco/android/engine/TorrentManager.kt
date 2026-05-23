@@ -1015,6 +1015,7 @@ class TorrentManager(private val downloadDir: File) {
             put("fileIdx", state.requestedFileIdx ?: -1)
             put("fileName", state.selectedFileName ?: "")
             put("fileSize", state.selectedFileSize)
+            put("duration", state.duration)
             put("downloadDir", File(completedDownloadsDir, hash.take(16)).absolutePath)
             put("subtitles", org.json.JSONArray(state.subtitlesJson ?: "[]"))
 
