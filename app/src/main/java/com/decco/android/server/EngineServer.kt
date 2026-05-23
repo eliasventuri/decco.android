@@ -250,17 +250,16 @@ class EngineServer(
     // ========================
 
     private fun handleProxy(session: IHTTPSession, hash: String): Response {
-        // Check if it is a completed download
+        // Check if it is a completed download — always serve the LARGEST video file
         val list = torrentManager.getDownloadsList()
         val downloadMatch = list.find { (it["hash"] as? String)?.lowercase() == hash.lowercase() }
         if (downloadMatch != null && downloadMatch["status"] == "completed") {
-            val fileName = downloadMatch["fileName"] as? String
             val downloadDirStr = downloadMatch["downloadDir"] as? String
-            if (!fileName.isNullOrEmpty() && !downloadDirStr.isNullOrEmpty()) {
-                val file = File(downloadDirStr, fileName)
-                if (file.exists()) {
-                    Log.i(TAG, "Serving completed download from disk: ${file.absolutePath}")
-                    return serveLocalFile(session, file)
+            if (!downloadDirStr.isNullOrEmpty()) {
+                val largestFile = findLargestVideoFile(File(downloadDirStr))
+                if (largestFile != null && largestFile.exists()) {
+                    Log.i(TAG, "Serving completed download (largest file) from disk: ${largestFile.absolutePath}")
+                    return serveLocalFile(session, largestFile)
                 }
             }
         }
@@ -493,6 +492,39 @@ class EngineServer(
             "\"$k\":$jv"
         }
         return "{$entries}"
+    }
+
+    /**
+     * Recursively find the largest video file in a directory.
+     * This avoids serving sample/preview clips when the torrent
+     * contains both main content and small sample files.
+     */
+    private fun findLargestVideoFile(dir: File): File? {
+        if (!dir.exists() || !dir.isDirectory) return null
+        val videoExtensions = setOf(
+            "mkv", "mp4", "avi", "webm", "ts", "mov",
+            "wmv", "flv", "m4v", "3gp", "mpg", "mpeg", "ogv"
+        )
+        var largestFile: File? = null
+        var largestSize = -1L
+
+        fun scan(currentDir: File) {
+            val children = currentDir.listFiles() ?: return
+            for (child in children) {
+                if (child.isDirectory) {
+                    scan(child)
+                } else {
+                    val ext = child.extension.lowercase()
+                    if (ext in videoExtensions && child.length() > largestSize) {
+                        largestSize = child.length()
+                        largestFile = child
+                    }
+                }
+            }
+        }
+
+        scan(dir)
+        return largestFile
     }
 
     companion object {
