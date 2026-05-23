@@ -249,6 +249,21 @@ class EngineServer(
     // ========================
 
     private fun handleProxy(session: IHTTPSession, hash: String): Response {
+        // Check if it is a completed download
+        val list = torrentManager.getDownloadsList()
+        val downloadMatch = list.find { (it["hash"] as? String)?.lowercase() == hash.lowercase() }
+        if (downloadMatch != null && downloadMatch["status"] == "completed") {
+            val fileName = downloadMatch["fileName"] as? String
+            val downloadDirStr = downloadMatch["downloadDir"] as? String
+            if (!fileName.isNullOrEmpty() && !downloadDirStr.isNullOrEmpty()) {
+                val file = File(downloadDirStr, fileName)
+                if (file.exists()) {
+                    Log.i(TAG, "Serving completed download from disk: ${file.absolutePath}")
+                    return serveLocalFile(session, file)
+                }
+            }
+        }
+
         val state = waitForMetadata(hash, timeoutMs = 60_000)
         if (state == null) {
             return cors(newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Torrent not started"))
@@ -305,6 +320,79 @@ class EngineServer(
             cors(resp)
         } catch (e: Exception) {
             Log.e(TAG, "Proxy Stream Error: ${e.message}")
+            cors(newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Stream error"))
+        }
+    }
+
+    private fun serveLocalFile(session: IHTTPSession, file: File): Response {
+        val fileSize = file.length()
+        val extension = file.name.substringAfterLast('.', "mp4")
+        val mimeType = when (extension.lowercase()) {
+            "mkv" -> "video/x-matroska"
+            else -> android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "video/mp4"
+        }
+
+        val rangeHeader = session.headers["range"]
+
+        if (rangeHeader == null) {
+            val input = java.io.FileInputStream(file)
+            val resp = newFixedLengthResponse(Response.Status.OK, mimeType, input, fileSize)
+            resp.addHeader("Accept-Ranges", "bytes")
+            return cors(resp)
+        }
+
+        val parsedRange = parseRangeHeader(rangeHeader, fileSize)
+        if (parsedRange == null) {
+            val resp = newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid Range header")
+            resp.addHeader("Accept-Ranges", "bytes")
+            return cors(resp)
+        }
+        val start = parsedRange.first
+        val end = parsedRange.second
+        val contentLength = end - start + 1
+
+        return try {
+            val raf = java.io.RandomAccessFile(file, "r")
+            raf.seek(start)
+            
+            val input = object : java.io.InputStream() {
+                private var pos = start
+                
+                override fun read(): Int {
+                    if (pos > end) return -1
+                    val b = raf.read()
+                    if (b != -1) pos++
+                    return b
+                }
+
+                override fun read(b: ByteArray, off: Int, len: Int): Int {
+                    if (pos > end) return -1
+                    val toRead = java.lang.Math.min(len.toLong(), end - pos + 1).toInt()
+                    val read = raf.read(b, off, toRead)
+                    if (read != -1) pos += read
+                    return read
+                }
+
+                override fun close() {
+                    raf.close()
+                }
+
+                override fun available(): Int {
+                    return java.lang.Math.min(super.available().toLong(), end - pos + 1).toInt()
+                }
+            }
+
+            val resp = newFixedLengthResponse(
+                Response.Status.PARTIAL_CONTENT,
+                mimeType,
+                input,
+                contentLength
+            )
+            resp.addHeader("Content-Range", "bytes $start-$end/$fileSize")
+            resp.addHeader("Accept-Ranges", "bytes")
+            cors(resp)
+        } catch (e: Exception) {
+            Log.e(TAG, "Local File Stream Error: ${e.message}")
             cors(newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Stream error"))
         }
     }
