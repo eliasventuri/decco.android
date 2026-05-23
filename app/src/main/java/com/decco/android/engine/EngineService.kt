@@ -77,23 +77,6 @@ class EngineService : Service() {
     }
 
     override fun onCreate() {
-
-
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            checkNetworkMetered()
-        }
-
-        override fun onLost(network: Network) {
-            checkNetworkMetered()
-        }
-
-        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-            checkNetworkMetered()
-        }
-    }
-
-    override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "EngineService created")
 

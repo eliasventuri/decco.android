@@ -10,18 +10,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
-package com.decco.android.engine
-
-import android.os.Environment
-import android.util.Log
-import org.libtorrent4j.*
-import org.libtorrent4j.alerts.*
-import org.libtorrent4j.swig.*
-import java.io.File
-import java.io.IOException
-import java.io.InputStream
-import java.util.concurrent.ConcurrentHashMap
-
 /**
  * Manages torrent sessions using LibTorrent4j.
  * Replicates the desktop engine's torrent-stream functionality.
