@@ -1144,23 +1144,24 @@ class TorrentManager(private val downloadDir: File) {
                                 var content = subConn.inputStream.bufferedReader().use { it.readText() }
                                 val lang = sub.optString("lang", sub.optString("language", "unknown"))
                                 val label = sub.optString("label", lang)
-                                if (!content.trim().startsWith("WEBVTT")) {
-                                    content = srtToWebVTT(content)
-                                }
 
                                 val baseName = videoFilePath.nameWithoutExtension
                                 val videoDir = videoFilePath.parentFile ?: videoFilePath
-                                val safeLabel = label.replace(Regex("[^a-zA-Z0-9\\s.-]"), "").trim().ifEmpty { lang }
-                                val vttFile = File(videoDir, "$baseName.$safeLabel.vtt")
-                                vttFile.writeText(content)
+                                
+                                // VLC ONLY reliably detects language track names from filenames if:
+                                // 1. The extension is a classic subtitle format like .srt
+                                // 2. The language code is an ISO 639 code (e.g. 'es', 'en')
+                                // If we use .vtt or full words like 'Spanish', VLC defaults to 'Track 1'.
+                                val srtFile = File(videoDir, "$baseName.$lang.srt")
+                                srtFile.writeText(content)
 
                                 val subItem = org.json.JSONObject().apply {
                                     put("lang", lang)
-                                    put("label", sub.optString("label", lang))
-                                    put("path", vttFile.absolutePath)
+                                    put("label", label)
+                                    put("path", srtFile.absolutePath)
                                 }
                                 savedSubs.put(subItem)
-                                Log.i(TAG, "Saved downloaded subtitle: ${vttFile.absolutePath}")
+                                Log.i(TAG, "Saved downloaded subtitle: ${srtFile.absolutePath}")
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to download subtitle item: ${e.message}")
