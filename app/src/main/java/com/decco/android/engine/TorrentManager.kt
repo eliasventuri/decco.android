@@ -326,6 +326,23 @@ class TorrentManager(private val downloadDir: File) {
 
         if (state.isDownload) {
             persistDownloadMeta(hash, state)
+            
+            // Download subtitles to the specific video directory if not already done
+            val savePath = handle.savePath()
+            val filePath = torrentInfo.files().filePath(selectedFile.index)
+            val fullPath = File(savePath, filePath)
+            val videoDir = fullPath.parentFile ?: File(savePath)
+            
+            if (state.subtitlesJson == null && state.imdbId != null) {
+                downloadSubtitlesBackground(
+                    hash, 
+                    state.downloadTitle ?: "Video", 
+                    state.imdbId!!, 
+                    state.season ?: 0, 
+                    state.episode ?: 0, 
+                    videoDir
+                )
+            }
         }
 
         Log.i(TAG, "Selected ONLY: ${selectedFile.name} (${selectedFile.size / 1024 / 1024} MB)")
@@ -787,7 +804,7 @@ class TorrentManager(private val downloadDir: File) {
             onMetadataReceived(hash, handle)
         }
 
-        downloadSubtitlesBackground(hash, title, imdbId, season, episode, saveDir)
+        // Subtitles will be downloaded in onMetadataReceived once the video path is known
 
         return getDownloadStatusMap(state)
     }
