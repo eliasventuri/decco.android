@@ -880,13 +880,21 @@ class TorrentManager(private val downloadDir: File) {
             val hash = keys.next()
             val item = downloads.getJSONObject(hash)
             val status = item.optString("status")
-            if (status == "downloading" || status == "loading") {
+            if (status == "downloading" || status == "loading" || status == "completed") {
                 val title = item.optString("title", "Video")
                 val imdbId = item.optString("imdbId", "")
                 val season = item.optInt("season", 0)
                 val episode = item.optInt("episode", 0)
                 val fileIdx = if (item.has("fileIdx")) item.optInt("fileIdx") else null
                 startDownload(hash, title, imdbId, season, episode, if (fileIdx == -1) null else fileIdx)
+                
+                // Keep the completed status so UI doesn't think it's downloading again
+                if (status == "completed") {
+                    val state = activeHandles[hash]
+                    if (state != null) {
+                        state.status = "completed"
+                    }
+                }
             }
         }
     }
