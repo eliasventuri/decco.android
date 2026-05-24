@@ -1143,13 +1143,15 @@ class TorrentManager(private val downloadDir: File) {
                             if (subConn.responseCode == 200) {
                                 var content = subConn.inputStream.bufferedReader().use { it.readText() }
                                 val lang = sub.optString("lang", sub.optString("language", "unknown"))
+                                val label = sub.optString("label", lang)
                                 if (!content.trim().startsWith("WEBVTT")) {
                                     content = srtToWebVTT(content)
                                 }
 
                                 val baseName = videoFilePath.nameWithoutExtension
                                 val videoDir = videoFilePath.parentFile ?: videoFilePath
-                                val vttFile = File(videoDir, "$baseName.$lang.vtt")
+                                val safeLabel = label.replace(Regex("[^a-zA-Z0-9\\s.-]"), "").trim().ifEmpty { lang }
+                                val vttFile = File(videoDir, "$baseName.$safeLabel.vtt")
                                 vttFile.writeText(content)
 
                                 val subItem = org.json.JSONObject().apply {
