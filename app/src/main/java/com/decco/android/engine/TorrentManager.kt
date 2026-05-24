@@ -340,7 +340,7 @@ class TorrentManager(private val downloadDir: File) {
                     state.imdbId!!, 
                     state.season ?: 0, 
                     state.episode ?: 0, 
-                    videoDir
+                    fullPath
                 )
             }
         }
@@ -1115,7 +1115,7 @@ class TorrentManager(private val downloadDir: File) {
         imdbId: String,
         season: Int,
         episode: Int,
-        saveDir: File
+        videoFilePath: File
     ) {
         if (imdbId.isEmpty()) return
         Thread {
@@ -1147,8 +1147,9 @@ class TorrentManager(private val downloadDir: File) {
                                     content = srtToWebVTT(content)
                                 }
 
-                                val safeName = title.replace(Regex("[^a-zA-Z0-9\\s.-]"), "").take(80)
-                                val vttFile = File(saveDir, "$safeName.$lang.vtt")
+                                val baseName = videoFilePath.nameWithoutExtension
+                                val videoDir = videoFilePath.parentFile ?: videoFilePath
+                                val vttFile = File(videoDir, "$baseName.$lang.vtt")
                                 vttFile.writeText(content)
 
                                 val subItem = org.json.JSONObject().apply {
