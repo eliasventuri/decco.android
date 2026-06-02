@@ -295,7 +295,7 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             startTorrentInEngine(hash, season, episode, fileIdx)
-            val ready = waitForTorrentReady(hash, timeoutMs = 60_000)
+            val ready = waitForTorrentReady(hash, timeoutMs = 120_000)
 
             runOnUiThread {
                 if (!ready) {

@@ -284,18 +284,18 @@ class PlayerActivity : AppCompatActivity() {
         // Tune Buffering for heavy/slow streams
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                30_000,  // Min buffer
-                60_000,  // Max buffer
-                2_500,   // Buffer for playback
-                5_000    // Buffer for playback after rebuffer
+                50_000,  // Min buffer (increased for safety net)
+                120_000, // Max buffer (increased to cache more when speed is available)
+                2_000,   // Buffer for playback (slightly reduced to start faster)
+                4_000    // Buffer for playback after rebuffer
             )
             .setBackBuffer(10_000, true)
             .build()
 
-        // Tune HTTP Network Timeouts
+        // Tune HTTP Network Timeouts (significantly increased)
         val dataSourceFactory = DefaultHttpDataSource.Factory()
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
+            .setConnectTimeoutMs(30_000) // 30 seconds
+            .setReadTimeoutMs(120_000)   // 120 seconds (2 minutes to wait for torrent pieces)
             .setAllowCrossProtocolRedirects(true)
 
         player = ExoPlayer.Builder(this, renderersFactory)

@@ -458,8 +458,15 @@ class TorrentManager(private val downloadDir: File) {
         val filePath = fileStorage.filePath(state.selectedFileIndex)
         val fullPath = File(savePath, filePath)
 
+        // Wait up to 5 seconds for file creation/allocation by libtorrent if not yet ready
+        var fileWaitRetries = 0
+        while (!fullPath.exists() && fileWaitRetries < 10) {
+            try { Thread.sleep(500) } catch (_: Exception) {}
+            fileWaitRetries++
+        }
+
         if (!fullPath.exists()) {
-            Log.w(TAG, "File not yet downloaded: $fullPath")
+            Log.w(TAG, "File not yet downloaded or allocated: $fullPath")
             return null
         }
 
@@ -504,7 +511,7 @@ class TorrentManager(private val downloadDir: File) {
 
                     Log.d(TAG, "Waiting for piece $pieceIndex (byte $bytePos)...")
                     val startTime = System.currentTimeMillis()
-                    val timeout = 60000L // 60 seconds max wait
+                    val timeout = 180000L // 180 seconds max wait (3 minutes) for low-seed stability
                     var lastReannounceAt = startTime
 
                     // Prioritize current piece and the next few pieces for smooth playback.

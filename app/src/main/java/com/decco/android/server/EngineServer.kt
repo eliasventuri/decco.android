@@ -264,7 +264,7 @@ class EngineServer(
             }
         }
 
-        val state = waitForMetadata(hash, timeoutMs = 60_000)
+        val state = waitForMetadata(hash, timeoutMs = 120_000)
         if (state == null) {
             return cors(newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Torrent not started"))
         }
