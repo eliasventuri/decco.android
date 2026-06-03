@@ -458,8 +458,17 @@ class TorrentManager(private val downloadDir: File) {
         val filePath = fileStorage.filePath(state.selectedFileIndex)
         val fullPath = File(savePath, filePath)
 
+        var retryCount = 0
+        while (!fullPath.exists() && retryCount < 10) {
+            Log.d(TAG, "Waiting for file physical creation: $fullPath (retry ${retryCount + 1})")
+            try {
+                Thread.sleep(500)
+            } catch (_: InterruptedException) {}
+            retryCount++
+        }
+
         if (!fullPath.exists()) {
-            Log.w(TAG, "File not yet downloaded: $fullPath")
+            Log.w(TAG, "File not yet downloaded/created after retry: $fullPath")
             return null
         }
 
@@ -504,7 +513,7 @@ class TorrentManager(private val downloadDir: File) {
 
                     Log.d(TAG, "Waiting for piece $pieceIndex (byte $bytePos)...")
                     val startTime = System.currentTimeMillis()
-                    val timeout = 60000L // 60 seconds max wait
+                    val timeout = 180000L // 3 minutes max wait
                     var lastReannounceAt = startTime
 
                     // Prioritize current piece and the next few pieces for smooth playback.

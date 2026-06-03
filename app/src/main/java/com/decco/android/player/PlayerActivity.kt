@@ -284,18 +284,18 @@ class PlayerActivity : AppCompatActivity() {
         // Tune Buffering for heavy/slow streams
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                30_000,  // Min buffer
-                60_000,  // Max buffer
-                2_500,   // Buffer for playback
-                5_000    // Buffer for playback after rebuffer
+                50_000,  // Min buffer
+                120_000, // Max buffer
+                2_000,   // Buffer for playback
+                4_000    // Buffer for playback after rebuffer
             )
             .setBackBuffer(10_000, true)
             .build()
 
         // Tune HTTP Network Timeouts
         val dataSourceFactory = DefaultHttpDataSource.Factory()
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
+            .setConnectTimeoutMs(30_000)
+            .setReadTimeoutMs(120_000)
             .setAllowCrossProtocolRedirects(true)
 
         player = ExoPlayer.Builder(this, renderersFactory)
@@ -694,12 +694,19 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (player == null) initializePlayer()
+        if (player == null) {
+            initializePlayer()
+        } else {
+            // Returning from background — resume playback
+            player?.playWhenReady = true
+        }
     }
 
     override fun onStop() {
         super.onStop()
-        releasePlayer()
+        // Only pause playback when going to background — do NOT release the player.
+        // This keeps the player alive so the user can return to it.
+        player?.playWhenReady = false
     }
 
     private fun releasePlayer() {
@@ -708,8 +715,9 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        
+        // Release the player when the Activity is truly finishing
+        releasePlayer()
+
         // Notify engine to stop torrent if on metered network to save data.
         // On unmetered (WiFi), we let it seed in the background as requested.
         if (hash.isNotEmpty()) {
@@ -730,7 +738,8 @@ class PlayerActivity : AppCompatActivity() {
                 }
             }
         }
-        
+
         scope.cancel()
+        super.onDestroy()
     }
 }

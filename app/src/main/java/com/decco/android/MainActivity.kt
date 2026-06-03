@@ -295,7 +295,7 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             startTorrentInEngine(hash, season, episode, fileIdx)
-            val ready = waitForTorrentReady(hash, timeoutMs = 60_000)
+            val ready = waitForTorrentReady(hash, timeoutMs = 120_000)
 
             runOnUiThread {
                 if (!ready) {
@@ -340,6 +340,12 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun isEngineRunning(): Boolean = EngineService.isRunning
+
+        @JavascriptInterface
+        fun startEngine() {
+            Log.d("DeccoBridge", "startEngine called from WebView")
+            startEngineService()
+        }
 
         @JavascriptInterface
         fun getCapabilities(): String {
