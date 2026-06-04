@@ -122,16 +122,6 @@
             android:padding="12dp"
             android:src="@drawable/ic_subtitles"
             app:tint="@android:color/white" />
-
-        <ImageButton
-            android:id="@+id/btn_download"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Download"
-            android:padding="12dp"
-            android:src="@drawable/ic_download"
-            app:tint="@android:color/white" />
     </LinearLayout>
 
     <!-- Position and Duration Labels -->

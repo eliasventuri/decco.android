@@ -144,9 +144,6 @@ class PlayerActivity : AppCompatActivity() {
         playerView.findViewById<View>(R.id.btn_subtitle)?.setOnClickListener { showSubtitleSelectionDialog() }
         playerView.findViewById<View>(R.id.btn_audio)?.setOnClickListener { showAudioTrackSelectionDialog() }
         
-        val btnDownload = playerView.findViewById<View>(R.id.btn_download)
-        btnDownload?.visibility = View.GONE
-        
         findViewById<View>(R.id.btn_retry)?.setOnClickListener { retryPlayback() }
         findViewById<View>(R.id.btn_error_back)?.setOnClickListener { finishAndRemoveTask() }
 
@@ -684,8 +681,21 @@ class PlayerActivity : AppCompatActivity() {
         super.onUserLeaveHint()
         // Automatically enter PiP mode when home/minimize is pressed while playing
         if (player != null && player!!.isPlaying) {
-            val params = android.app.PictureInPictureParams.Builder().build()
-            enterPictureInPictureMode(params)
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    val aspectRatio = android.util.Rational(16, 9)
+                    val builder = android.app.PictureInPictureParams.Builder()
+                        .setAspectRatio(aspectRatio)
+                    
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        builder.setAutoEnterEnabled(true)
+                    }
+                    
+                    enterPictureInPictureMode(builder.build())
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error entering PiP mode", e)
+            }
         }
     }
 
