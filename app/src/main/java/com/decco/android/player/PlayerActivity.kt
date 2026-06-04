@@ -145,29 +145,7 @@ class PlayerActivity : AppCompatActivity() {
         playerView.findViewById<View>(R.id.btn_audio)?.setOnClickListener { showAudioTrackSelectionDialog() }
         
         val btnDownload = playerView.findViewById<View>(R.id.btn_download)
-        if (hash.isNotEmpty()) {
-            btnDownload?.visibility = View.VISIBLE
-            btnDownload?.setOnClickListener {
-                try {
-                    val manager = com.decco.android.engine.EngineService.torrentManagerInstance
-                    if (manager != null) {
-                        val state = manager.getState(hash)
-                        val fileIdx = state?.selectedFileIndex ?: -1
-                        val actualFileIdx = if (fileIdx >= 0) fileIdx else null
-                        
-                        manager.startDownload(hash, mediaTitle, imdbId, season, episode, actualFileIdx)
-                        Toast.makeText(this, "Descarga iniciada: $mediaTitle", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this, "Error: Engine service not running", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting download in player", e)
-                    Toast.makeText(this, "Error al iniciar descarga", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } else {
-            btnDownload?.visibility = View.GONE
-        }
+        btnDownload?.visibility = View.GONE
         
         findViewById<View>(R.id.btn_retry)?.setOnClickListener { retryPlayback() }
         findViewById<View>(R.id.btn_error_back)?.setOnClickListener { finishAndRemoveTask() }
