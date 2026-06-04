@@ -697,16 +697,48 @@ class PlayerActivity : AppCompatActivity() {
         if (player == null) {
             initializePlayer()
         } else {
-            // Returning from background — resume playback
+            // Returning from background — resume playback if not in PiP
             player?.playWhenReady = true
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Automatically enter PiP mode when home/minimize is pressed while playing
+        if (player != null && player!!.isPlaying) {
+            val params = android.app.PictureInPictureParams.Builder().build()
+            enterPictureInPictureMode(params)
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) {
+            // Hide player controls when entering PiP
+            playerView.useController = false
+            titleView?.visibility = View.GONE
+            subtitleTitleView?.visibility = View.GONE
+        } else {
+            // Restore player controls when returning to full screen
+            playerView.useController = true
+            titleView?.visibility = View.VISIBLE
+            if (subtitleTitle.isNotEmpty()) {
+                subtitleTitleView?.visibility = View.VISIBLE
+            }
         }
     }
 
     override fun onStop() {
         super.onStop()
-        // Only pause playback when going to background — do NOT release the player.
-        // This keeps the player alive so the user can return to it.
-        player?.playWhenReady = false
+        // Only pause playback when NOT in Picture-in-Picture mode
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N && !isInPictureInPictureMode) {
+            player?.playWhenReady = false
+        } else if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.N) {
+            player?.playWhenReady = false
+        }
     }
 
     private fun releasePlayer() {

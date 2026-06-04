@@ -71,8 +71,9 @@
         <activity
             android:name=".player.PlayerActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:screenOrientation="sensorLandscape"
+            android:supportsPictureInPicture="true"
             android:launchMode="singleTask"
             android:taskAffinity=""
             android:excludeFromRecents="true"
