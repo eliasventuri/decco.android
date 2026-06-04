@@ -349,6 +349,7 @@ class PlayerActivity : AppCompatActivity() {
             exoPlayer.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     updatePlayPauseButtons(isPlaying)
+                    updatePiPParams()
                 }
 
                 override fun onPlaybackStateChanged(state: Int) {
@@ -360,6 +361,7 @@ class PlayerActivity : AppCompatActivity() {
                         Player.STATE_READY -> {
                             loadingView?.visibility = View.GONE
                             findViewById<ImageView>(R.id.loading_logo)?.clearAnimation()
+                            updatePiPParams()
                         }
                         Player.STATE_ENDED -> finishAndRemoveTask()
                         else -> {}
@@ -677,20 +679,35 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun updatePiPParams() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val aspectRatio = android.util.Rational(16, 9)
+            val builder = android.app.PictureInPictureParams.Builder()
+                .setAspectRatio(aspectRatio)
+            
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                // Auto enter PiP when swiping home (requires API 31+)
+                builder.setAutoEnterEnabled(player?.isPlaying == true)
+            }
+            
+            try {
+                setPictureInPictureParams(builder.build())
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting PiP params", e)
+            }
+        }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // Automatically enter PiP mode when home/minimize is pressed while playing
+        // (Fallback for Android 8.0 - 11)
         if (player != null && player!!.isPlaying) {
             try {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     val aspectRatio = android.util.Rational(16, 9)
                     val builder = android.app.PictureInPictureParams.Builder()
                         .setAspectRatio(aspectRatio)
-                    
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                        builder.setAutoEnterEnabled(true)
-                    }
-                    
                     enterPictureInPictureMode(builder.build())
                 }
             } catch (e: Exception) {

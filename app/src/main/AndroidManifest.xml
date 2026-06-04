@@ -75,8 +75,6 @@
             android:screenOrientation="sensorLandscape"
             android:supportsPictureInPicture="true"
             android:launchMode="singleTask"
-            android:taskAffinity=""
-            android:excludeFromRecents="true"
             android:theme="@style/Theme.Decco">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
