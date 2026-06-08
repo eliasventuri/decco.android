@@ -432,6 +432,38 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun playNativeDirect(jsonData: String) {
+            Log.d("DeccoBridge", "playNativeDirect called with: $jsonData")
+            try {
+                val json = org.json.JSONObject(jsonData)
+                val streamUrl = json.optString("streamUrl")
+                val title = json.optString("title")
+                
+                if (streamUrl.isEmpty()) {
+                    Log.e("DeccoBridge", "Missing streamUrl for direct playback")
+                    return
+                }
+
+                // Launch PlayerActivity directly without torrent engine
+                runOnUiThread {
+                    val playerIntent = com.decco.android.player.PlayerActivity.createIntent(
+                        context = this@MainActivity,
+                        streamUrl = streamUrl,
+                        hash = "live-stream", // Dummy hash since it's required by intent but not used for streaming here
+                        title = title,
+                        subtitleTitle = "Live TV",
+                        imdbId = "live",
+                        startPosition = 0
+                    )
+                    playerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(playerIntent)
+                }
+            } catch (e: Exception) {
+                Log.e("DeccoBridge", "Error parsing playNativeDirect", e)
+            }
+        }
+
+        @JavascriptInterface
         fun downloadNative(jsonData: String) {
             Log.d("DeccoBridge", "downloadNative called with: $jsonData")
             try {
