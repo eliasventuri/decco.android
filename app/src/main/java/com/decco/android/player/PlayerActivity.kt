@@ -65,6 +65,7 @@ class PlayerActivity : AppCompatActivity() {
         private const val EXTRA_SEASON = "season"
         private const val EXTRA_EPISODE = "episode"
         private const val EXTRA_SUBTITLES_JSON = "subtitles_json"
+        private const val EXTRA_IS_DIRECT_STREAM = "is_direct_stream"
 
         fun createIntent(
             context: Context,
@@ -76,7 +77,8 @@ class PlayerActivity : AppCompatActivity() {
             imdbId: String = "",
             season: Int = 0,
             episode: Int = 0,
-            subtitlesJson: String? = null
+            subtitlesJson: String? = null,
+            isDirectStream: Boolean = false
         ): Intent {
             return Intent(context, PlayerActivity::class.java).apply {
                 putExtra(EXTRA_STREAM_URL, streamUrl)
@@ -88,6 +90,7 @@ class PlayerActivity : AppCompatActivity() {
                 putExtra(EXTRA_SEASON, season)
                 putExtra(EXTRA_EPISODE, episode)
                 putExtra(EXTRA_SUBTITLES_JSON, subtitlesJson)
+                putExtra(EXTRA_IS_DIRECT_STREAM, isDirectStream)
             }
         }
     }
@@ -110,6 +113,7 @@ class PlayerActivity : AppCompatActivity() {
     private var imdbId: String = ""
     private var season: Int = 0
     private var episode: Int = 0
+    private var isDirectStream: Boolean = false
 
     private val externalSubtitles = ArrayList<MediaItem.SubtitleConfiguration>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -177,13 +181,14 @@ class PlayerActivity : AppCompatActivity() {
         imdbId = intent.getStringExtra(EXTRA_IMDB_ID) ?: ""
         season = intent.getIntExtra(EXTRA_SEASON, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
+        isDirectStream = intent.getBooleanExtra(EXTRA_IS_DIRECT_STREAM, false)
         
         val subsJson = intent.getStringExtra(EXTRA_SUBTITLES_JSON)
         if (!subsJson.isNullOrEmpty()) {
             parseSubtitlesJson(subsJson)
         }
         
-        Log.d(TAG, "handleIntent: url=$streamUrl, hash=$hash, title=$mediaTitle, subsCount=${externalSubtitles.size}")
+        Log.d(TAG, "handleIntent: url=$streamUrl, hash=$hash, title=$mediaTitle, direct=$isDirectStream, subsCount=${externalSubtitles.size}")
     }
 
     private fun parseSubtitlesJson(jsonStr: String) {
@@ -422,7 +427,7 @@ class PlayerActivity : AppCompatActivity() {
             .setMediaId(hash)
             .setSubtitleConfigurations(externalSubtitles)
 
-        if (streamUrl.contains(".m3u8")) {
+        if (isHlsStream(streamUrl)) {
             mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
         }
 
@@ -438,7 +443,7 @@ class PlayerActivity : AppCompatActivity() {
             .setMediaId(hash)
             .setSubtitleConfigurations(externalSubtitles)
 
-        if (streamUrl.contains(".m3u8")) {
+        if (isHlsStream(streamUrl)) {
             mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
         }
 
@@ -455,16 +460,25 @@ class PlayerActivity : AppCompatActivity() {
         val currentPosition = exoPlayer.currentPosition
         val wasPlaying = exoPlayer.playWhenReady
 
-        val mediaItem = MediaItem.Builder()
+        val mediaItemBuilder = MediaItem.Builder()
             .setUri(streamUrl)
             .setMediaId(hash)
             .setSubtitleConfigurations(externalSubtitles)
-            .build()
+
+        if (isHlsStream(streamUrl)) {
+            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+        }
 
         // false = don't reset position
-        exoPlayer.setMediaItem(mediaItem, false)
+        exoPlayer.setMediaItem(mediaItemBuilder.build(), false)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = wasPlaying
+    }
+
+    private fun isHlsStream(url: String): Boolean {
+        return url.contains(".m3u8", ignoreCase = true) ||
+            url.contains("application/vnd.apple.mpegurl", ignoreCase = true) ||
+            url.contains("application/x-mpegurl", ignoreCase = true)
     }
 
     private fun fetchExternalSubtitles() {
@@ -757,7 +771,7 @@ class PlayerActivity : AppCompatActivity() {
 
         // Notify engine to stop torrent if on metered network to save data.
         // On unmetered (WiFi), we let it seed in the background as requested.
-        if (hash.isNotEmpty()) {
+        if (!isDirectStream && hash.isNotEmpty()) {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             if (cm.isActiveNetworkMetered) {
                 scope.launch(Dispatchers.IO) {

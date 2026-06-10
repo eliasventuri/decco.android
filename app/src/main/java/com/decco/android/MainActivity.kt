@@ -453,7 +453,8 @@ class MainActivity : AppCompatActivity() {
                         title = title,
                         subtitleTitle = "Live TV",
                         imdbId = "live",
-                        startPosition = 0
+                        startPosition = 0,
+                        isDirectStream = true
                     )
                     playerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(playerIntent)
