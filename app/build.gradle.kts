@@ -14,8 +14,8 @@ android {
         applicationId = "com.decco.android"
         minSdk = 24
         targetSdk = 34
-        versionCode = 55
-        versionName = "1.0.54"
+        versionCode = 56
+        versionName = "1.0.55"
         multiDexEnabled = true
     }
 
