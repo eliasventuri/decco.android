@@ -66,6 +66,7 @@ class PlayerActivity : AppCompatActivity() {
         private const val EXTRA_EPISODE = "episode"
         private const val EXTRA_SUBTITLES_JSON = "subtitles_json"
         private const val EXTRA_IS_DIRECT_STREAM = "is_direct_stream"
+        private const val EXTRA_STREAM_TYPE = "stream_type"
 
         fun createIntent(
             context: Context,
@@ -78,7 +79,8 @@ class PlayerActivity : AppCompatActivity() {
             season: Int = 0,
             episode: Int = 0,
             subtitlesJson: String? = null,
-            isDirectStream: Boolean = false
+            isDirectStream: Boolean = false,
+            streamType: String = ""
         ): Intent {
             return Intent(context, PlayerActivity::class.java).apply {
                 putExtra(EXTRA_STREAM_URL, streamUrl)
@@ -91,6 +93,7 @@ class PlayerActivity : AppCompatActivity() {
                 putExtra(EXTRA_EPISODE, episode)
                 putExtra(EXTRA_SUBTITLES_JSON, subtitlesJson)
                 putExtra(EXTRA_IS_DIRECT_STREAM, isDirectStream)
+                putExtra(EXTRA_STREAM_TYPE, streamType)
             }
         }
     }
@@ -114,6 +117,7 @@ class PlayerActivity : AppCompatActivity() {
     private var season: Int = 0
     private var episode: Int = 0
     private var isDirectStream: Boolean = false
+    private var streamType: String = ""
 
     private val externalSubtitles = ArrayList<MediaItem.SubtitleConfiguration>()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -182,13 +186,14 @@ class PlayerActivity : AppCompatActivity() {
         season = intent.getIntExtra(EXTRA_SEASON, 0)
         episode = intent.getIntExtra(EXTRA_EPISODE, 0)
         isDirectStream = intent.getBooleanExtra(EXTRA_IS_DIRECT_STREAM, false)
+        streamType = intent.getStringExtra(EXTRA_STREAM_TYPE) ?: ""
         
         val subsJson = intent.getStringExtra(EXTRA_SUBTITLES_JSON)
         if (!subsJson.isNullOrEmpty()) {
             parseSubtitlesJson(subsJson)
         }
         
-        Log.d(TAG, "handleIntent: url=$streamUrl, hash=$hash, title=$mediaTitle, direct=$isDirectStream, subsCount=${externalSubtitles.size}")
+        Log.d(TAG, "handleIntent: url=$streamUrl, hash=$hash, title=$mediaTitle, direct=$isDirectStream, streamType=$streamType, subsCount=${externalSubtitles.size}")
     }
 
     private fun parseSubtitlesJson(jsonStr: String) {
@@ -427,9 +432,7 @@ class PlayerActivity : AppCompatActivity() {
             .setMediaId(hash)
             .setSubtitleConfigurations(externalSubtitles)
 
-        if (isHlsStream(streamUrl)) {
-            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-        }
+        applyStreamMimeType(mediaItemBuilder)
 
         exoPlayer.setMediaItem(mediaItemBuilder.build())
         exoPlayer.seekTo(currentPos)
@@ -443,9 +446,7 @@ class PlayerActivity : AppCompatActivity() {
             .setMediaId(hash)
             .setSubtitleConfigurations(externalSubtitles)
 
-        if (isHlsStream(streamUrl)) {
-            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-        }
+        applyStreamMimeType(mediaItemBuilder)
 
         exoPlayer.setMediaItem(mediaItemBuilder.build())
         if (startPosition > 0) {
@@ -465,9 +466,7 @@ class PlayerActivity : AppCompatActivity() {
             .setMediaId(hash)
             .setSubtitleConfigurations(externalSubtitles)
 
-        if (isHlsStream(streamUrl)) {
-            mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-        }
+        applyStreamMimeType(mediaItemBuilder)
 
         // false = don't reset position
         exoPlayer.setMediaItem(mediaItemBuilder.build(), false)
@@ -479,6 +478,34 @@ class PlayerActivity : AppCompatActivity() {
         return url.contains(".m3u8", ignoreCase = true) ||
             url.contains("application/vnd.apple.mpegurl", ignoreCase = true) ||
             url.contains("application/x-mpegurl", ignoreCase = true)
+    }
+
+    private fun isDashStream(url: String): Boolean {
+        return url.contains(".mpd", ignoreCase = true) ||
+            url.contains("application/dash+xml", ignoreCase = true)
+    }
+
+    private fun isMpegTsStream(url: String): Boolean {
+        return url.contains(".ts", ignoreCase = true) ||
+            url.contains(".m2ts", ignoreCase = true) ||
+            url.contains(".mts", ignoreCase = true)
+    }
+
+    private fun applyStreamMimeType(mediaItemBuilder: MediaItem.Builder) {
+        val normalizedType = streamType.lowercase(Locale.US)
+
+        when {
+            normalizedType == "hls" || isHlsStream(streamUrl) ->
+                mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            normalizedType == "dash" || isDashStream(streamUrl) ->
+                mediaItemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+            normalizedType == "mpegts" || isMpegTsStream(streamUrl) ->
+                mediaItemBuilder.setMimeType(MimeTypes.VIDEO_MP2T)
+            normalizedType == "flv" ->
+                mediaItemBuilder.setMimeType(MimeTypes.VIDEO_FLV)
+            normalizedType == "native" ->
+                mediaItemBuilder.setMimeType(MimeTypes.VIDEO_MP4)
+        }
     }
 
     private fun fetchExternalSubtitles() {

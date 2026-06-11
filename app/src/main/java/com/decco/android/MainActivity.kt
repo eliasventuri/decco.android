@@ -438,6 +438,7 @@ class MainActivity : AppCompatActivity() {
                 val json = org.json.JSONObject(jsonData)
                 val streamUrl = json.optString("streamUrl")
                 val title = json.optString("title")
+                val streamType = json.optString("streamType")
                 
                 if (streamUrl.isEmpty()) {
                     Log.e("DeccoBridge", "Missing streamUrl for direct playback")
@@ -454,7 +455,8 @@ class MainActivity : AppCompatActivity() {
                         subtitleTitle = "Live TV",
                         imdbId = "live",
                         startPosition = 0,
-                        isDirectStream = true
+                        isDirectStream = true,
+                        streamType = streamType
                     )
                     playerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(playerIntent)
