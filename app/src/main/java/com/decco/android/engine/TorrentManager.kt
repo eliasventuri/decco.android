@@ -1060,6 +1060,120 @@ class TorrentManager(private val downloadDir: File) {
         Log.i(TAG, "Deleted download $hash")
     }
 
+    fun pauseAllDownloads(): Int {
+        var count = 0
+        activeHandles.values.forEach {
+            if (it.isDownload && it.status == "downloading") {
+                try {
+                    it.handle.pause()
+                    it.status = "paused"
+                    persistDownloadMeta(it.hash, it)
+                    count++
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error pausing download ${it.hash}: ${e.message}")
+                }
+            }
+        }
+        val meta = loadDownloadsMeta()
+        val downloads = meta.optJSONObject("downloads")
+        if (downloads != null) {
+            val keys = downloads.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                val item = downloads.optJSONObject(k)
+                if (item?.optString("status") == "queued") {
+                    item.put("status", "paused")
+                    count++
+                }
+            }
+            saveDownloadsMeta(meta)
+        }
+        Log.i(TAG, "Paused all downloads ($count paused)")
+        return count
+    }
+
+    fun resumeAllDownloads(): Int {
+        var count = 0
+        val meta = loadDownloadsMeta()
+        val downloads = meta.optJSONObject("downloads") ?: return 0
+        val keys = downloads.keys()
+        val toResume = mutableListOf<String>()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val item = downloads.optJSONObject(k)
+            if (item?.optString("status") == "paused") {
+                toResume.add(k)
+            }
+        }
+        toResume.forEach { hash ->
+            resumeDownload(hash)
+            count++
+        }
+        Log.i(TAG, "Resumed all downloads ($count resumed)")
+        return count
+    }
+
+    fun clearCompletedDownloads(): Int {
+        var count = 0
+        val meta = loadDownloadsMeta()
+        val downloads = meta.optJSONObject("downloads") ?: return 0
+        val toRemove = mutableListOf<String>()
+        val keys = downloads.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val item = downloads.optJSONObject(k)
+            if (item?.optString("status") == "completed") {
+                toRemove.add(k)
+            }
+        }
+        toRemove.forEach { hash ->
+            downloads.remove(hash)
+            count++
+        }
+        if (count > 0) {
+            saveDownloadsMeta(meta)
+        }
+        Log.i(TAG, "Cleared $count completed downloads")
+        return count
+    }
+
+    fun getSettingsJson(): String {
+        val meta = loadDownloadsMeta()
+        val settings = meta.optJSONObject("settings") ?: org.json.JSONObject().apply {
+            put("maxConcurrent", 2)
+            put("autoPauseOnPlayback", true)
+        }
+        val freeSpace = downloadDir.freeSpace
+        val totalSpace = downloadDir.totalSpace
+        val diskSpace = org.json.JSONObject().apply {
+            put("free", freeSpace)
+            put("total", totalSpace)
+            put("used", totalSpace - freeSpace)
+        }
+        return org.json.JSONObject().apply {
+            put("settings", settings)
+            put("diskSpace", diskSpace)
+            put("downloadDir", downloadDir.absolutePath)
+        }.toString()
+    }
+
+    fun updateSettings(maxConcurrent: Int?, autoPause: Boolean?): String {
+        val meta = loadDownloadsMeta()
+        var settings = meta.optJSONObject("settings")
+        if (settings == null) {
+            settings = org.json.JSONObject()
+            meta.put("settings", settings)
+        }
+        if (maxConcurrent != null) {
+            settings.put("maxConcurrent", maxConcurrent)
+        }
+        if (autoPause != null) {
+            settings.put("autoPauseOnPlayback", autoPause)
+        }
+        saveDownloadsMeta(meta)
+        return getSettingsJson()
+    }
+
     fun restoreDownloads() {
         val meta = loadDownloadsMeta()
         val downloads = meta.optJSONObject("downloads") ?: return

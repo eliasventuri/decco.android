@@ -88,8 +88,40 @@ class EngineServer(
                     }
                     arr.put(obj)
                 }
-                val responseJson = org.json.JSONObject().put("downloads", arr).toString()
-                cors(jsonResponse(Response.Status.OK, responseJson))
+                val rootObj = org.json.JSONObject(torrentManager.getSettingsJson())
+                rootObj.put("downloads", arr)
+                cors(jsonResponse(Response.Status.OK, rootObj.toString()))
+            }
+
+            // ---- Pause all downloads ----
+            uri == "/download/pause-all" -> {
+                val count = torrentManager.pauseAllDownloads()
+                cors(jsonResponse(Response.Status.OK, """{"status":"paused_all","count":$count}"""))
+            }
+
+            // ---- Resume all downloads ----
+            uri == "/download/resume-all" -> {
+                val count = torrentManager.resumeAllDownloads()
+                cors(jsonResponse(Response.Status.OK, """{"status":"resumed_all","count":$count}"""))
+            }
+
+            // ---- Clear completed downloads ----
+            uri == "/download/clear-completed" -> {
+                val count = torrentManager.clearCompletedDownloads()
+                cors(jsonResponse(Response.Status.OK, """{"status":"cleared_completed","count":$count}"""))
+            }
+
+            // ---- Download settings ----
+            uri == "/download/settings" -> {
+                cors(jsonResponse(Response.Status.OK, torrentManager.getSettingsJson()))
+            }
+
+            uri.startsWith("/download/settings/set") -> {
+                val p = session.parms
+                val maxConcurrent = p["maxConcurrent"]?.toIntOrNull()
+                val autoPause = p["autoPauseOnPlayback"]?.let { it == "true" || it == "1" }
+                val settingsJson = torrentManager.updateSettings(maxConcurrent, autoPause)
+                cors(jsonResponse(Response.Status.OK, settingsJson))
             }
 
             // ---- Pause download ----
