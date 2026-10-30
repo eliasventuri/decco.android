@@ -182,6 +182,13 @@ class EngineServer(
                 }
             }
 
+            // ---- Prewarm torrent ----
+            uri.matches(Regex("/prewarm/([a-fA-F0-9]+)")) -> {
+                val hash = uri.removePrefix("/prewarm/").substringBefore("/")
+                torrentManager.prewarmTorrent(hash)
+                cors(jsonResponse(Response.Status.OK, """{"status":"prewarming","hash":"$hash"}"""))
+            }
+
             // ---- Start torrent ----
             uri.matches(Regex("/start/([a-fA-F0-9]+)")) -> {
                 val hash = uri.removePrefix("/start/")
@@ -213,8 +220,8 @@ class EngineServer(
             // ---- Stop torrent ----
             uri.matches(Regex("/stop/([a-fA-F0-9]+)")) -> {
                 val hash = uri.removePrefix("/stop/")
-                torrentManager.removeTorrent(hash)
-                cors(jsonResponse(Response.Status.OK, """{"status":"removed","hash":"$hash"}"""))
+                torrentManager.stopTorrentWithGrace(hash)
+                cors(jsonResponse(Response.Status.OK, """{"status":"stopped","hash":"$hash"}"""))
             }
 
             // ---- Network mode ----

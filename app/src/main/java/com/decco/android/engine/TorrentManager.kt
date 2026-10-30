@@ -19,11 +19,65 @@ class TorrentManager(private val downloadDir: File) {
     private var session: SessionManager? = null
     private val activeHandles = ConcurrentHashMap<String, TorrentState>()
     private var isMetered: Boolean = false
+    private val stopGraceTimers = ConcurrentHashMap<String, java.util.Timer>()
+
+    fun cancelStopGrace(hash: String) {
+        val normalized = hash.lowercase()
+        stopGraceTimers.remove(normalized)?.cancel()
+    }
 
     private val completedDownloadsDir = File(downloadDir.parentFile, "completed-downloads").apply {
         if (!exists()) mkdirs()
     }
     private val downloadsMetaFile = File(completedDownloadsDir, "downloads-meta.json")
+    private val torrentCacheDir = File(downloadDir, "torrent-stream").apply {
+        if (!exists()) mkdirs()
+    }
+
+    private fun getTorrentCacheFile(hash: String): File {
+        return File(torrentCacheDir, "${hash.lowercase()}.torrent")
+    }
+
+    fun prefetchTorrentCache(hash: String) {
+        val cleanHash = hash.trim().lowercase()
+        val cacheFile = getTorrentCacheFile(cleanHash)
+        if (cacheFile.exists() && cacheFile.length() > 64) return
+
+        Thread({
+            val upperHash = cleanHash.uppercase()
+            val urls = listOf(
+                "https://itorrents.org/torrent/$upperHash.torrent",
+                "https://torrage.info/torrent.php?h=$upperHash"
+            )
+            for (urlString in urls) {
+                try {
+                    val url = java.net.URL(urlString)
+                    val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                        connectTimeout = 3000
+                        readTimeout = 4000
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    }
+                    if (conn.responseCode in 200..299) {
+                        val bytes = conn.inputStream.use { it.readBytes() }
+                        if (bytes.size > 64 && bytes[0] == 'd'.code.toByte()) {
+                            cacheFile.writeBytes(bytes)
+                            Log.i(TAG, "Fast-resolved .torrent metadata via HTTP cache (${bytes.size} bytes) for $cleanHash")
+                            break
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }, "torrent-prefetch-$cleanHash").start()
+    }
+
+    fun prewarmTorrent(hash: String) {
+        cancelStopGrace(hash)
+        prefetchTorrentCache(hash)
+        if (!activeHandles.containsKey(hash.lowercase())) {
+            startTorrent(hash)
+        }
+    }
 
 
     /**
@@ -54,29 +108,35 @@ class TorrentManager(private val downloadDir: File) {
     companion object {
         private const val TAG = "TorrentManager"
 
-        // Same trackers as the desktop engine
+        // High-availability public trackers (synced with desktop engine 2026)
         val TRACKERS = listOf(
-            "udp://opentor.net:6969",
             "udp://tracker.opentrackr.org:1337/announce",
+            "udp://open.demonii.com:1337/announce",
+            "udp://exodus.desync.com:6969/announce",
             "udp://open.stealth.si:80/announce",
-            "http://open.tracker.cl:1337/announce",
             "udp://tracker.torrent.eu.org:451/announce",
-            "udp://zer0day.ch:1337/announce",
-            "udp://wepzone.net:6969/announce",
-            "udp://tracker.srv00.com:6969/announce",
-            "udp://tracker.filemail.com:6969/announce",
-            "udp://tracker.dler.org:6969/announce",
-            "udp://tracker.bittor.pw:1337/announce",
-            "udp://tracker-udp.gbitt.info:80/announce",
-            "udp://run.publictracker.xyz:6969/announce",
-            "udp://opentracker.io:6969/announce",
-            "udp://open.dstud.io:6969/announce",
+            "udp://tracker.openbittorrent.com:6969/announce",
+            "udp://tracker.moeking.me:6969/announce",
             "udp://explodie.org:6969/announce",
-            "https://tracker.iperson.xyz:443/announce",
-            "https://torrent.tracker.durukanbal.com:443/announce",
-            "https://cny.fan:443/announce",
-            "http://tracker2.dler.org:80/announce",
-            "http://tracker.wepzone.net:6969/announce"
+            "udp://tracker1.bt.moack.co.kr:80/announce",
+            "udp://tracker.theoks.net:6969/announce",
+            "udp://tracker.tiny-vps.com:6969/announce",
+            "udp://tracker.dler.org:6969/announce",
+            "udp://opentracker.io:6969/announce",
+            "udp://open.free-tracker.ga:6969/announce",
+            "udp://opentor.net:6969",
+            "udp://p4p.arenabg.com:1337/announce",
+            "udp://movies.zsw.ca:6969/announce",
+            "http://tracker.opentrackr.org:1337/announce",
+            "http://tracker.openbittorrent.com:80/announce",
+            "http://open.acgnxtracker.com:80/announce",
+            "http://tracker.dler.org:6969/announce",
+            "https://tracker.tamersunion.org:443/announce",
+            "https://tracker.gbitt.info:443/announce",
+            "http://bt.t-ru.org/ann?magnet",
+            "http://bt2.t-ru.org/ann?magnet",
+            "http://bt3.t-ru.org/ann?magnet",
+            "http://bt4.t-ru.org/ann?magnet"
         )
 
         // Video file extensions
@@ -109,8 +169,18 @@ class TorrentManager(private val downloadDir: File) {
         if (!downloadDir.exists()) downloadDir.mkdirs()
 
         session = SessionManager(true).apply {
-            // Configure session settings
-            val params = SessionParams(SettingsPack())
+            // Configure high-performance session settings
+            val sp = SettingsPack()
+            sp.setBoolean(settings_pack.bool_types.enable_dht.swigValue(), true)
+            sp.setBoolean(settings_pack.bool_types.enable_lsd.swigValue(), true)
+            sp.setBoolean(settings_pack.bool_types.enable_upnp.swigValue(), true)
+            sp.setBoolean(settings_pack.bool_types.enable_natpmp.swigValue(), true)
+            sp.connectionsLimit(150)
+            sp.activeDownloads(20)
+            sp.activeSeeds(10)
+            sp.activeLimit(30)
+            
+            val params = SessionParams(sp)
             start(params)
         }
 
@@ -161,7 +231,35 @@ class TorrentManager(private val downloadDir: File) {
         season: Int? = null,
         episode: Int? = null
     ): TorrentState? {
+        cancelStopGrace(hash)
         val sess = session ?: return null
+
+        // 1. Pause any other streaming torrent to give 100% bandwidth to current active playback
+        activeHandles.values.forEach { other ->
+            if (other.hash.lowercase() != hash.lowercase() && !other.isDownload && other.handle.isValid) {
+                try {
+                    other.handle.pause()
+                    other.status = "paused"
+                    Log.i(TAG, "Paused competing stream ${other.hash} for $hash")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to pause competing stream: ${e.message}")
+                }
+            }
+        }
+
+        // 2. Auto-pause background downloads while user is actively streaming
+        activeHandles.values.forEach { dl ->
+            if (dl.isDownload && dl.hash.lowercase() != hash.lowercase() && dl.status == "downloading" && dl.handle.isValid) {
+                try {
+                    dl.handle.pause()
+                    dl.status = "paused"
+                    persistDownloadMeta(dl.hash, dl)
+                    Log.i(TAG, "Auto-paused background download ${dl.hash} to maximize bandwidth for playback ($hash)")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to auto-pause download: ${e.message}")
+                }
+            }
+        }
 
         // If already active, check if handle is still valid
         activeHandles[hash]?.let { existing ->
@@ -215,24 +313,40 @@ class TorrentManager(private val downloadDir: File) {
 
         Log.i(TAG, "Starting torrent: hash=$hash fileIdx=$fileIdx S${season}E${episode}")
 
+        val cleanHash = hash.lowercase()
+        prefetchTorrentCache(cleanHash)
+
         // Build magnet URI with trackers
         val trackerParams = TRACKERS.joinToString("&tr=") { java.net.URLEncoder.encode(it, "UTF-8") }
         val magnetUri = "magnet:?xt=urn:btih:$hash&tr=$trackerParams"
 
-        val saveDir = File(downloadDir, hash.take(20))
+        val saveDir = File(downloadDir, cleanHash.take(20))
         if (!saveDir.exists()) saveDir.mkdirs()
 
-        // Use standard download (wrapper)
-        val flags = torrent_flags_t()
-        sess.download(magnetUri, saveDir, flags)
+        val cacheFile = getTorrentCacheFile(cleanHash)
+        var handle: TorrentHandle? = null
 
-        // Use AddTorrentParams to get safe Sha1Hash from magnet URI
-        // libtorrent 2.x uses 'info_hashes' (v1+v2 container) instead of simple 'info_hash'
-        val p = AddTorrentParams.parseMagnetUri("magnet:?xt=urn:btih:$hash")
-        val infoHashes = p.swig().info_hashes 
-        val swigHash = infoHashes.v1 
-        val sHash = Sha1Hash(swigHash)
-        val handle = sess.find(sHash)
+        if (cacheFile.exists() && cacheFile.length() > 64) {
+            try {
+                val ti = TorrentInfo(cacheFile)
+                sess.download(ti, saveDir)
+                handle = sess.find(ti.infoHash())
+                Log.i(TAG, "Started torrent from cached .torrent file: $cleanHash")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load cached torrent file, falling back to magnet: ${e.message}")
+            }
+        }
+
+        if (handle == null || !handle.isValid) {
+            val flags = torrent_flags_t()
+            sess.download(magnetUri, saveDir, flags)
+
+            val p = AddTorrentParams.parseMagnetUri("magnet:?xt=urn:btih:$hash")
+            val infoHashes = p.swig().info_hashes 
+            val swigHash = infoHashes.v1 
+            val sHash = Sha1Hash(swigHash)
+            handle = sess.find(sHash)
+        }
 
         if (handle == null || !handle.isValid) {
             Log.e(TAG, "Failed to find valid handle after download for $hash")
@@ -390,12 +504,16 @@ class TorrentManager(private val downloadDir: File) {
     /**
      * Get the state for a specific torrent
      */
-    fun getState(hash: String): TorrentState? = activeHandles[hash]
+    fun getState(hash: String): TorrentState? {
+        cancelStopGrace(hash)
+        return activeHandles[hash]
+    }
 
     /**
      * Get live status info for a torrent (peers, speed, progress)
      */
     fun getStatus(hash: String): Map<String, Any?> {
+        cancelStopGrace(hash)
         val state = activeHandles[hash]
         if (state == null) {
             val meta = loadDownloadsMeta()
@@ -502,6 +620,7 @@ class TorrentManager(private val downloadDir: File) {
             
             return object : InputStream() {
                 private var pos = start
+                private var currentPrioritizedPiece = -1
                 private val pieceLength = torrentInfo.pieceLength().toLong()
                 private val fileOffsetInTorrent = torrentInfo.files().fileOffset(fileIndex)
 
@@ -511,15 +630,19 @@ class TorrentManager(private val downloadDir: File) {
                     
                     if (handle.havePiece(pieceIndex)) return
 
+                    // Prioritize current piece and sliding readahead window (~24MB) for smooth playback
+                    if (currentPrioritizedPiece != pieceIndex) {
+                        currentPrioritizedPiece = pieceIndex
+                        val windowPieces = maxOf(4, minOf(16, Math.ceil(24.0 * 1024 * 1024 / pieceLength).toInt()))
+                        for (i in 0 until windowPieces) {
+                            handle.setPieceDeadline(pieceIndex + i, 500 + (i * 150))
+                        }
+                    }
+
                     Log.d(TAG, "Waiting for piece $pieceIndex (byte $bytePos)...")
                     val startTime = System.currentTimeMillis()
                     val timeout = 180000L // 3 minutes max wait
                     var lastReannounceAt = startTime
-
-                    // Prioritize current piece and the next few pieces for smooth playback.
-                    for (i in 0..12) {
-                        handle.setPieceDeadline(pieceIndex + i, 1000 + (i * 250))
-                    }
                     
                     while (!handle.havePiece(pieceIndex)) {
                         val now = System.currentTimeMillis()
@@ -542,7 +665,7 @@ class TorrentManager(private val downloadDir: File) {
                             throw IOException("Timeout waiting for piece $pieceIndex")
                         }
                         try {
-                            Thread.sleep(500)
+                            Thread.sleep(100)
                         } catch (e: InterruptedException) {
                             throw IOException("Interrupted while waiting for piece $pieceIndex")
                         }
@@ -608,10 +731,11 @@ class TorrentManager(private val downloadDir: File) {
             handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD, TorrentFlags.SEQUENTIAL_DOWNLOAD)
             handle.setSequentialRange(firstPiece, lastPiece)
 
-            // Ask aggressively for the first chunk of pieces to start playback quickly.
-            val bootstrapPieces = minOf(40, (lastPiece - firstPiece + 1).coerceAtLeast(1))
+            // Prioritize dynamically: target ~24MB at head (minimum 2 pieces, up to 16)
+            val targetHeadPieces = maxOf(2, minOf(16, Math.ceil(24.0 * 1024 * 1024 / pieceLength).toInt()))
+            val bootstrapPieces = minOf(targetHeadPieces, (lastPiece - firstPiece + 1).coerceAtLeast(1))
             for (i in 0 until bootstrapPieces) {
-                handle.setPieceDeadline(firstPiece + i, 300 + (i * 120))
+                handle.setPieceDeadline(firstPiece + i, 200 + (i * 80))
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to apply streaming priorities: ${e.message}")
@@ -659,9 +783,47 @@ class TorrentManager(private val downloadDir: File) {
     }
 
     /**
+     * Stop/remove a torrent with a grace period (6s) to protect against React unmount/remount
+     */
+    fun stopTorrentWithGrace(hash: String) {
+        val normalized = hash.lowercase()
+        cancelStopGrace(normalized)
+
+        val timer = java.util.Timer()
+        timer.schedule(object : java.util.TimerTask() {
+            override fun run() {
+                stopGraceTimers.remove(normalized)
+                val state = activeHandles[hash]
+                if (state != null && !state.isDownload) {
+                    removeTorrent(hash)
+                    Log.i(TAG, "Stopped stream for $hash after grace period")
+                }
+
+                // Resume auto-paused background downloads if no active streaming remains
+                val hasOtherStreams = activeHandles.values.any { !it.isDownload && it.status != "paused" }
+                if (!hasOtherStreams && !isMetered) {
+                    activeHandles.values.forEach { dl ->
+                        if (dl.isDownload && dl.status == "paused" && dl.handle.isValid) {
+                            try {
+                                dl.handle.resume()
+                                dl.status = "downloading"
+                                persistDownloadMeta(dl.hash, dl)
+                                Log.i(TAG, "Auto-resumed download ${dl.hash} now that playback exited")
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+            }
+        }, 6000L)
+
+        stopGraceTimers[normalized] = timer
+    }
+
+    /**
      * Remove a torrent and clean up its files
      */
     fun removeTorrent(hash: String) {
+        cancelStopGrace(hash)
         val state = activeHandles.remove(hash) ?: return
         session?.remove(state.handle)
         Log.i(TAG, "Removed torrent $hash")
